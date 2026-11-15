@@ -47,7 +47,7 @@ WAVO_TEST_MODEL=parakeet-ultra-Q8_0.gguf WAVO_TEST_WAV=jfk.wav WAVO_TEST_TEXT=co
 
 ## Conversations
 
-The switch "Conversation" on the Dictate screen labels who said what: `Speaker 1: …`, a paragraph a turn. The wavo engine has no diarization, so this part is [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) with pyannote's segmentation model and a 3D-Speaker embedding model (34 MB, downloaded once from the switch). The text shows while you speak, transcribed at your pauses as in a dictation; after the stop sherpa-onnx tells the speakers apart on the CPU, over the whole recording, and each word goes to the speaker it starts with. The keyboard has no such mode.
+The switch Settings › Conversation makes the Dictate screen label who said what: `Speaker 1: …`, a paragraph a turn. The wavo engine has no diarization, so this part is [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) with pyannote's segmentation model and a 3D-Speaker embedding model (34 MB, downloaded once from the switch). The text shows while you speak, transcribed at your pauses as in a dictation; after the stop sherpa-onnx tells the speakers apart on the CPU, over the whole recording, and each word goes to the speaker it starts with. The keyboard has no such mode.
 
 The sherpa-onnx AAR isn't in git: the `sherpaAar` Gradle task downloads it from GitHub's releases into `app/libs/` and checks its SHA-256.
 

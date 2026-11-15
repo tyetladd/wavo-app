@@ -260,7 +260,13 @@ private fun DictateScreen(dictation: Dictation, toModels: () -> Unit) {
             engine is Engine.State.Ready -> "$chosen is ready"
             else -> chosen
         }
-        if (chosen != null) ConversationRow(enabled = ui.phase == Dictation.Phase.Idle)
+        if (chosen != null && (ui.conversation || (ui.phase == Dictation.Phase.Idle && App.instance.settings.conversation))) {
+            Text(
+                "Conversation: speakers are labelled after the stop",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.primary,
+            )
+        }
         Text(status, textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(16.dp))
 
@@ -298,9 +304,9 @@ private fun DictateScreen(dictation: Dictation, toModels: () -> Unit) {
     }
 }
 
-/** The switch that makes the next recording a conversation, and the speaker models' download under it. */
+/** The switch that makes the app's recordings conversations, and the speaker models' download under it. */
 @Composable
-private fun ConversationRow(enabled: Boolean) {
+private fun ConversationRow() {
     val settings = App.instance.settings
     var on by remember { mutableStateOf(settings.conversation) }
     val ready by Speakers.ready.collectAsState()
@@ -311,12 +317,13 @@ private fun ConversationRow(enabled: Boolean) {
             Column(Modifier.weight(1f)) {
                 Text("Conversation")
                 Text(
-                    "Labels who said what. The text shows as you speak, the speakers after the stop. Up to 10 minutes.",
+                    "The Dictate screen labels who said what: the text shows as you speak, the speakers " +
+                        "after the stop. Up to 10 minutes. The keyboard isn't affected.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            Switch(checked = on, enabled = enabled, onCheckedChange = {
+            Switch(checked = on, onCheckedChange = {
                 on = it
                 settings.conversation = it
             })
@@ -563,6 +570,9 @@ private fun SettingsScreen() {
             }
         }
 
+        Section("Conversation")
+        ConversationRow()
+
         Section("Engine")
         // The engine may have gone back to the CPU by itself: the stored value shows.
         LaunchedEffect(engine) {
@@ -625,7 +635,7 @@ private fun SettingsScreen() {
             Column(Modifier.weight(1f)) {
                 Text("Transcribe while speaking")
                 Text(
-                    "Each part is transcribed at your pause, so the text is ready sooner after the stop, " +
+                    "Each part is transcribed at a pause of a second, so the text is ready sooner after the stop, " +
                         "and the keyboard types it as you go. A pause may end a sentence.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,

@@ -36,12 +36,12 @@ class PiecesTest {
 
     @Test
     fun cutsInThePauseAndLosesNothing() {
-        val audio = tone(3.0, 0.3f) + tone(1.0, 0.001f) + tone(2.05, 0.3f)
+        val audio = tone(3.0, 0.3f) + tone(1.4, 0.001f) + tone(2.05, 0.3f)
         val (pieces, rest) = run(audio)
 
         assertEquals(1, pieces.size)
-        // In the pause, from 3 s to 4 s.
-        assertTrue(pieces[0].size in (3.1 * rate).toInt()..(3.9 * rate).toInt())
+        // In the pause, from 3 s to 4.4 s.
+        assertTrue(pieces[0].size in (3.1 * rate).toInt()..(4.3 * rate).toInt())
         assertEquals(audio.size, pieces[0].size + rest.size)
         assertEquals(audio.toList(), (pieces[0] + rest).toList())
     }
@@ -51,6 +51,11 @@ class PiecesTest {
         val (pieces, rest) = run(tone(1.0, 0.3f) + tone(0.4, 0.001f) + tone(1.0, 0.3f))
         assertTrue(pieces.isEmpty())
         assertEquals((2.4 * rate).toInt(), rest.size)
+
+        // A breath of 0.7 s in a sentence is no pause: the sentence stays whole.
+        val (none, whole) = run(tone(3.0, 0.3f) + tone(0.7, 0.001f) + tone(3.0, 0.3f))
+        assertTrue(none.isEmpty())
+        assertEquals((6.7 * rate).toInt(), whole.size)
     }
 
     @Test
@@ -78,7 +83,7 @@ class PiecesTest {
 
     @Test
     fun everyPauseCuts() {
-        val phrase = tone(2.5, 0.2f) + tone(0.8, 0.002f)
+        val phrase = tone(2.5, 0.2f) + tone(1.3, 0.002f)
         val (pieces, rest) = run(phrase + phrase + phrase + tone(1.0, 0.2f))
         assertEquals(3, pieces.size)
         assertTrue(rest.size > rate && rest.size < 2 * rate)

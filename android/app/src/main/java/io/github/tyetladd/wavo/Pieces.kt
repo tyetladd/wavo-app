@@ -101,8 +101,11 @@ class Pieces {
         const val FRAME = Recorder.RATE / 50
         const val FLOOR = 0.006f
 
-        /** Frames of quiet that make a pause: half a second. */
-        const val PAUSE = 25
+        /**
+         * Frames of quiet that make a pause: a second. A piece ends a sentence for the model, so
+         * a shorter pause, a breath or a search for a word, put full stops in the middle of one.
+         */
+        const val PAUSE = 50
 
         /** Frames of speech a piece has at least: 0.2 s. */
         const val SPEECH = 10
