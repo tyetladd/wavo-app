@@ -43,6 +43,11 @@ class Settings(context: Context) {
         get() = prefs.getBoolean("gpu_crashed", false)
         set(value) = prefs.edit().putBoolean("gpu_crashed", value).apply()
 
+    /** Transcribe each piece of a dictation at its pause, while the person speaks on. */
+    var live: Boolean
+        get() = prefs.getBoolean("live", true)
+        set(value) = prefs.edit().putBoolean("live", value).apply()
+
     /** Minutes without a dictation after which the model leaves the memory. */
     var unloadAfterMinutes: Int
         get() = prefs.getInt("unload_after", 10)

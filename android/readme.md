@@ -45,7 +45,7 @@ WAVO_TEST_MODEL=parakeet-ultra-Q8_0.gguf WAVO_TEST_WAV=jfk.wav WAVO_TEST_TEXT=co
 
 ## Not yet
 
-- The text while speaking (the desktop's live preview), and pause detection.
+- The desktop's live preview, where words show before a pause. Here a dictation is cut at its pauses and each piece is transcribed while you speak on (Settings › Text › Transcribe while speaking).
 - A system speech recognizer service, for other keyboards' microphone buttons.
 - Recordings in the history, and transcribing audio files.
 - A download that goes on with the app closed: it stops with the app and resumes at the next tap on Download.

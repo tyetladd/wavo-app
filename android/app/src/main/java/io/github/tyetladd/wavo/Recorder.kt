@@ -81,6 +81,21 @@ class Recorder {
         return true
     }
 
+    /** A copy of what is recorded so far past the first `from` samples. */
+    fun since(from: Int): FloatArray = synchronized(chunks) {
+        val out = FloatArray(maxOf(samples - from, 0))
+        var at = 0
+        for (chunk in chunks) {
+            val end = at + chunk.size
+            if (end > from) {
+                val skip = maxOf(from - at, 0)
+                chunk.copyInto(out, at + skip - from, skip, chunk.size)
+            }
+            at = end
+        }
+        out
+    }
+
     /** Ends the recording and returns it. */
     fun stop(): FloatArray {
         running = false

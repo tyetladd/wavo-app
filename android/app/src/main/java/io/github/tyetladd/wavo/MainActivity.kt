@@ -96,7 +96,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
-        dictation = Dictation(this) {}
+        dictation = Dictation(this)
         Models.refresh()
         setContent { Theme { Wavo(dictation) } }
     }
@@ -221,7 +221,10 @@ private fun DictateScreen(dictation: Dictation, toModels: () -> Unit) {
     ) {
         Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState())) {
             val last = ui.last
-            if (last == null) {
+            if (ui.phase != Dictation.Phase.Idle && ui.partial.isNotEmpty()) {
+                // The pieces ready while the person speaks on.
+                Text(ui.partial, style = MaterialTheme.typography.headlineSmall)
+            } else if (last == null) {
                 Text(
                     "Tap the microphone and speak. The text shows here; nothing leaves the phone.",
                     style = MaterialTheme.typography.bodyLarge,
@@ -231,7 +234,9 @@ private fun DictateScreen(dictation: Dictation, toModels: () -> Unit) {
                 SelectionContainer { Text(last.text, style = MaterialTheme.typography.headlineSmall) }
                 Spacer(Modifier.height(12.dp))
                 Text(
-                    "${timing(last.audioMs, last.tookMs)}\n${last.model} on ${last.device}",
+                    "${timing(last.audioMs, last.tookMs)}\n" +
+                        "Ready %.1f s after the stop\n".format(last.waitMs / 1000.0) +
+                        "${last.model} on ${last.device}",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -485,6 +490,7 @@ private fun SettingsScreen() {
     var language by remember { mutableStateOf(settings.language) }
     var clean by remember { mutableStateOf(settings.clean) }
     var crashed by remember { mutableStateOf(settings.gpuCrashed) }
+    var live by remember { mutableStateOf(settings.live) }
     var unloadAfter by remember { mutableIntStateOf(settings.unloadAfterMinutes) }
 
     Column(
@@ -550,6 +556,21 @@ private fun SettingsScreen() {
         }
 
         Section("Text")
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("Transcribe while speaking")
+                Text(
+                    "Each part is transcribed at your pause, so the text is ready sooner after the stop, " +
+                        "and the keyboard types it as you go. A pause may end a sentence.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Switch(checked = live, onCheckedChange = {
+                live = it
+                settings.live = it
+            })
+        }
         val langs = models.firstOrNull { it.name == settings.model }?.langs.orEmpty().sorted()
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {

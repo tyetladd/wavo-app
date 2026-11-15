@@ -21,6 +21,8 @@ data class Heard(
     val model: String,
     /** `CPU (NEON, 4 threads)`. */
     val device: String,
+    /** From the stop to the text, for a dictation; less than [tookMs] when pieces ran while speaking. */
+    val waitMs: Long = 0,
 ) {
     companion object {
         fun parse(json: String, model: String, device: String): Heard {

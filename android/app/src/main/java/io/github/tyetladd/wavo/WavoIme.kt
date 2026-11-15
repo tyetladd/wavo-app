@@ -56,7 +56,7 @@ class WavoIme : InputMethodService() {
 
     override fun onCreate() {
         super.onCreate()
-        dictation = Dictation(this, ::commit)
+        dictation = Dictation(this, onPiece = ::commit)
         scope.launch { dictation.ui.collect(::render) }
         scope.launch { Engine.state.collect { render(dictation.ui.value) } }
     }
@@ -75,16 +75,17 @@ class WavoIme : InputMethodService() {
     }
 
     override fun onFinishInputView(finishing: Boolean) {
-        // The field is gone: nothing to type a recording into.
+        // The field is gone: nothing to type the rest into.
         dictation.cancel()
         super.onFinishInputView(finishing)
     }
 
     // MARK: Text
 
-    private fun commit(heard: Heard) {
+    /** A piece of the dictation, typed as soon as it is ready; the last one comes after the stop. */
+    private fun commit(text: String) {
         val field = currentInputConnection ?: return
-        field.commitText(lead(field.getTextBeforeCursor(1, 0)) + heard.text, 1)
+        field.commitText(lead(field.getTextBeforeCursor(1, 0)) + text, 1)
     }
 
     private fun enter() {
