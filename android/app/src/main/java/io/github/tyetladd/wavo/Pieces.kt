@@ -25,6 +25,10 @@ class Pieces {
     /** Where the audio not yet handed out starts: a sample at a frame's start. */
     private var from = 0
 
+    /** The sample of the recording the last piece handed out starts at. */
+    var start = 0
+        private set
+
     fun feed(chunk: FloatArray) {
         if (size + chunk.size > pcm.size) pcm = pcm.copyOf(maxOf(pcm.size * 2, size + chunk.size))
         chunk.copyInto(pcm, size)
@@ -83,6 +87,7 @@ class Pieces {
     }
 
     private fun cut(at: Int): FloatArray {
+        start = from
         val piece = pcm.copyOfRange(from, at)
         from = at
         return piece

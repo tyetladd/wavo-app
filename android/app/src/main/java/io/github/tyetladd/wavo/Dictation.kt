@@ -59,6 +59,8 @@ class Dictation(
     private var sample: Heard? = null
     private var conversation = false
     private var note: String? = null
+    private val words = ArrayList<Word>()
+    private var segments: Result<List<Segment>>? = null
 
     val allowed: Boolean
         get() = context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
@@ -82,8 +84,7 @@ class Dictation(
 
         session++
         conversation = conversations && settings.conversation
-        // A conversation is transcribed whole: its words need their times from its start.
-        pieces = if (settings.live && !conversation) Pieces() else null
+        pieces = if (settings.live) Pieces() else null
         fed = 0
         texts.clear()
         pending = 0
@@ -92,6 +93,8 @@ class Dictation(
         failure = null
         note = null
         sample = null
+        words.clear()
+        segments = null
         ui.value = Ui(
             Phase.Recording,
             startedAt = SystemClock.elapsedRealtime(),
@@ -108,13 +111,22 @@ class Dictation(
         val more = recorder.since(fed)
         fed += more.size
         pieces.feed(more)
-        while (true) submit(pieces.next() ?: break)
+        while (true) {
+            val piece = pieces.next() ?: break
+            submit(piece, pieces.start)
+        }
     }
 
-    private fun submit(pcm: FloatArray) {
+    /**
+     * A piece of the recording, starting at the sample `start`, goes to the engine. Its text shows
+     * at once; in a conversation its words are kept with their times from the recording's start,
+     * for the speakers found after the stop, and the cleanup waits until then.
+     */
+    private fun submit(pcm: FloatArray, start: Int) {
         val mine = session
+        val startMs = start * 1000L / Recorder.RATE
         pending++
-        Engine.transcribe(pcm) { result ->
+        Engine.transcribe(pcm, clean = if (conversation) false else null) { result ->
             if (mine != session) return@transcribe
 
             pending--
@@ -124,85 +136,78 @@ class Dictation(
                 tookMs += heard.tookMs
                 if (heard.text.isNotEmpty()) {
                     texts += heard.text
+                    words += heard.words.map { it.copy(ms = it.ms + startMs) }
                     ui.update { it.copy(partial = texts.joinToString(" ")) }
-                    onPiece(heard.text)
+                    if (!conversation) onPiece(heard.text)
                 }
             }
-            if (stoppedAt != 0L && pending == 0) finish()
+            done()
         }
     }
 
-    /** Ends the recording and transcribes what the engine hasn't had yet. */
+    /**
+     * Ends the recording and transcribes what the engine hasn't had yet. A conversation's
+     * speakers are told apart meanwhile, on a thread of their own: that takes the whole recording.
+     */
     fun stop() {
         if (ui.value.phase != Phase.Recording) return
 
         val all = recorder.stop()
         audioMs = all.size * 1000L / Recorder.RATE
+        val pieces = pieces
         val rest = pieces?.let {
             it.feed(all.copyOfRange(minOf(fed, all.size), all.size))
             it.rest()
         } ?: all
         stoppedAt = SystemClock.elapsedRealtime()
         ui.update { it.copy(phase = Phase.Transcribing, level = 0f) }
-        if (conversation) converse(all) else submit(rest)
+        submit(rest, pieces?.start ?: 0)
+
+        if (conversation) {
+            val mine = session
+            val main = android.os.Handler(android.os.Looper.getMainLooper())
+            kotlin.concurrent.thread(name = "wavo-speakers") {
+                val split = runCatching { Speakers.diarize(all) }
+                main.post {
+                    if (mine != session) return@post
+                    segments = split
+                    done()
+                }
+            }
+        }
+    }
+
+    /** A result is back: after the stop, the last one ends the dictation. */
+    private fun done() {
+        if (stoppedAt != 0L && pending == 0 && (!conversation || segments != null)) finish()
     }
 
     /**
-     * A conversation: the engine transcribes it while the speakers are told apart on another
-     * thread, then each word goes to the speaker it starts with. If the speakers can't be told
-     * apart the text still comes, without them.
+     * A conversation's text: each word goes to the speaker it starts with, and each turn is
+     * cleaned as a dictation is. If the speakers couldn't be told apart the text still comes,
+     * without them.
      */
-    private fun converse(pcm: FloatArray) {
-        val mine = session
-        val main = android.os.Handler(android.os.Looper.getMainLooper())
-        var heard: Result<Heard>? = null
-        var segments: Result<List<Segment>>? = null
+    private fun conversed(): String {
+        val split = segments ?: return ""
+        split.exceptionOrNull()?.let { note = "The speakers couldn't be told apart: ${it.message}" }
 
-        fun both() {
-            val result = heard ?: return
-            val split = segments ?: return
-            if (mine != session) return
-
-            val whole = result.getOrNull()
-            if (whole == null) {
-                failure = result.exceptionOrNull()?.message ?: "The engine failed"
-                return finish()
-            }
-
-            sample = whole
-            tookMs = whole.tookMs
-            val settings = App.instance.settings
-            val language = whole.language ?: settings.language
-            val turns = turns(whole.words, split.getOrDefault(emptyList())).map {
-                if (settings.clean) it.copy(text = Native.clean(it.text, language)) else it
-            }
-            val text = script(turns.filter { it.text.isNotEmpty() })
-            if (text.isNotEmpty()) texts += text
-            split.exceptionOrNull()?.let { note = "The speakers couldn't be told apart: ${it.message}" }
-            finish()
+        val settings = App.instance.settings
+        val language = sample?.language ?: settings.language
+        val turns = turns(words, split.getOrDefault(emptyList())).map {
+            if (settings.clean) it.copy(text = Native.clean(it.text, language)) else it
         }
-
-        Engine.transcribe(pcm, clean = false) {
-            heard = it
-            both()
-        }
-        kotlin.concurrent.thread(name = "wavo-speakers") {
-            val split = runCatching { Speakers.diarize(pcm) }
-            main.post {
-                segments = split
-                both()
-            }
-        }
+        return script(turns.filter { it.text.isNotEmpty() })
     }
 
     /** Every piece is back: the dictation's text. */
     private fun finish() {
-        val text = texts.joinToString(" ")
+        val text = if (conversation) conversed() else texts.joinToString(" ")
         val heard = sample?.copy(
             text = text,
             tookMs = tookMs,
             audioMs = audioMs,
             waitMs = SystemClock.elapsedRealtime() - stoppedAt,
+            words = emptyList(),
         )
         val error = when {
             failure != null -> failure

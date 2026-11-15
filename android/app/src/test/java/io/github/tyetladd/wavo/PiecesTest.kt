@@ -22,9 +22,16 @@ class PiecesTest {
         val out = ArrayList<FloatArray>()
         for (start in audio.indices step rate / 10) {
             pieces.feed(audio.copyOfRange(start, minOf(start + rate / 10, audio.size)))
-            while (true) out += pieces.next() ?: break
+            while (true) {
+                val piece = pieces.next() ?: break
+                // A piece says where in the recording it starts: its samples are the recording's there.
+                assertEquals(audio.copyOfRange(pieces.start, pieces.start + piece.size).toList(), piece.toList())
+                out += piece
+            }
         }
-        return out to pieces.rest()
+        val rest = pieces.rest()
+        assertEquals(audio.size - rest.size, pieces.start)
+        return out to rest
     }
 
     @Test

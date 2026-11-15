@@ -252,7 +252,7 @@ private fun DictateScreen(dictation: Dictation, toModels: () -> Unit) {
             recording -> "Listening  ${clock(now - ui.startedAt)}"
             ui.phase == Dictation.Phase.Transcribing ->
                 (engine as? Engine.State.Loading)?.let { "Loading ${it.model}…" }
-                    ?: if (ui.conversation) "Transcribing and telling the speakers apart…" else "Transcribing…"
+                    ?: if (ui.conversation) "Telling the speakers apart…" else "Transcribing…"
             chosen == null -> "No model yet"
             ui.error != null -> ui.error!!
             engine is Engine.State.Loading -> "Loading ${(engine as Engine.State.Loading).model}…"
@@ -311,7 +311,7 @@ private fun ConversationRow(enabled: Boolean) {
             Column(Modifier.weight(1f)) {
                 Text("Conversation")
                 Text(
-                    "Labels who said what, after the stop. Up to 10 minutes.",
+                    "Labels who said what. The text shows as you speak, the speakers after the stop. Up to 10 minutes.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
