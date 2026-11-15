@@ -8,10 +8,10 @@ use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 use serde::Serialize;
-use wavo::hub::{Hub, MODELS};
+use wavo::hub::MODELS;
 use wavo::{Backend, Options};
 
-use crate::{cleanup, cores};
+use crate::{cleanup, cores, store};
 
 /// 16 kHz mono, what the models take.
 pub const SAMPLE_RATE: usize = 16_000;
@@ -27,11 +27,6 @@ pub type Result<T> = std::result::Result<T, String>;
 
 fn text(e: impl std::fmt::Display) -> String {
   e.to_string()
-}
-
-fn hub(root: &Path) -> Hub {
-  // No Neural Engine to prepare for on a phone.
-  Hub::at(root).prepare(false)
 }
 
 // MARK: Models
@@ -56,7 +51,6 @@ pub struct Entry {
 
 /// wavo's models, with the files of those downloaded into `root`.
 pub fn catalog(root: &Path) -> Vec<Entry> {
-  let hub = hub(root);
   MODELS
     .iter()
     .map(|m| Entry {
@@ -68,25 +62,20 @@ pub fn catalog(root: &Path) -> Vec<Entry> {
       size: m.size,
       punctuated: m.punctuated,
       speed: m.speed(),
-      path: hub.find(m.name),
+      path: store::find(root, m),
     })
     .collect()
 }
 
 /// Downloads a model into `root` and returns its file; a download cut short resumes. `progress`
 /// gets the bytes done and the total, and stops the download by returning `false`.
-pub fn pull(root: &Path, name: &str, mut progress: impl FnMut(u64, u64) -> bool) -> Result<PathBuf> {
-  std::fs::create_dir_all(root).map_err(text)?;
-  let pulled = hub(root).pull(name, |p| match progress(p.done, p.total) {
-    true => ControlFlow::Continue(()),
-    false => ControlFlow::Break(()),
-  });
-  pulled.map_err(text)
+pub fn pull(root: &Path, name: &str, progress: impl FnMut(u64, u64) -> bool) -> Result<PathBuf> {
+  store::pull(root, name, progress)
 }
 
 /// Deletes a model from `root`; the bytes freed.
 pub fn remove(root: &Path, name: &str) -> Result<u64> {
-  Ok(hub(root).remove(name).map_err(text)?.unwrap_or(0))
+  store::remove(root, name)
 }
 
 // MARK: Engine

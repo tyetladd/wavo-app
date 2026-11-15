@@ -6,7 +6,7 @@ A first version: it builds, and its engine and JNI layer are tested on a compute
 
 ## What is here
 
-- `core/`: a Rust library, the engine behind JNI. It wraps wavo (the CPU backend with NEON, or Vulkan), downloads models into the app's folder with `wavo::hub`, and reuses the desktop app's `src/cleanup.rs` and `src/numbers.rs` as they are. It keeps the engine's threads off the phone's slowest cores.
+- `core/`: a Rust library, the engine behind JNI. It wraps wavo (the CPU backend with NEON, or Vulkan), downloads models into the app's folder (its own downloader: wavo's takes file locks, which Rust lacks on Android), and reuses the desktop app's `src/cleanup.rs` and `src/numbers.rs` as they are. It keeps the engine's threads off the phone's slowest cores.
 - `app/`: the Kotlin app. `WavoIme` is the keyboard, `MainActivity` the screens (Dictate, Models, History, Settings), `Engine` the one thread that owns the model.
 
 ## Build

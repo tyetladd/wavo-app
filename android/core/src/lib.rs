@@ -17,3 +17,4 @@ mod numbers;
 mod cores;
 pub mod engine;
 mod jni;
+mod store;

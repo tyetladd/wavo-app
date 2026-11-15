@@ -42,14 +42,16 @@ class App : Application() {
     lateinit var history: History
         private set
 
-    /** The models' folder, a Hugging Face cache of the app's own. */
-    val hub: File get() = File(filesDir, "hub")
+    /** The models' folder: a file for each model downloaded. */
+    val models: File get() = File(filesDir, "models")
 
     override fun onCreate() {
         super.onCreate()
         instance = this
         settings = Settings(this)
         history = History(this)
+        // What the first builds' downloader left: nothing reads it now.
+        File(filesDir, "hub").deleteRecursively()
     }
 
     companion object {

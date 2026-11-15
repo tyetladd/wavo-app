@@ -67,7 +67,7 @@ object Models {
     val downloads = MutableStateFlow<Map<String, Download>>(emptyMap())
 
     private val cancelled = ConcurrentHashMap<String, AtomicBoolean>()
-    private val root: String get() = App.instance.hub.path
+    private val root: String get() = App.instance.models.path
 
     /** Reads the folder again. Milliseconds: it only looks for the files. */
     fun refresh(): List<ModelInfo> {
