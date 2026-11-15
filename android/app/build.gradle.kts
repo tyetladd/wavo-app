@@ -1,3 +1,5 @@
+import java.security.MessageDigest
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -16,8 +18,8 @@ android {
         applicationId = "io.github.tyetladd.wavo"
         minSdk = 29
         targetSdk = 35
-        versionCode = 4
-        versionName = "0.2.0"
+        versionCode = 5
+        versionName = "0.3.0"
         ndk { abiFilters += abis }
     }
 
@@ -36,6 +38,42 @@ android {
 
     kotlinOptions { jvmTarget = "17" }
     buildFeatures { compose = true }
+
+    // Of sherpa-onnx only its JNI library and ONNX Runtime are used.
+    packaging {
+        jniLibs.excludes += listOf("**/libsherpa-onnx-c-api.so", "**/libsherpa-onnx-cxx-api.so")
+    }
+}
+
+// sherpa-onnx, for the speakers of a conversation: its AAR is only on GitHub's releases, and no
+// binary is kept in git, so it is downloaded once into libs/ and checked.
+val sherpaVersion = "1.13.8"
+val sherpaSha256 = "633c24321e06b1fe79feafa03ea16cbc0f8a286641e2da3559bac91bdb13bd96"
+val sherpaAar = layout.projectDirectory.file("libs/sherpa-onnx-$sherpaVersion.aar")
+
+val sherpa = tasks.register("sherpaAar") {
+    outputs.file(sherpaAar)
+    doLast {
+        val file = sherpaAar.asFile
+        file.parentFile.mkdirs()
+        val url = "https://github.com/k2-fsa/sherpa-onnx/releases/download/v$sherpaVersion/sherpa-onnx-$sherpaVersion.aar"
+        uri(url).toURL().openStream().use { input -> file.outputStream().use { input.copyTo(it) } }
+
+        val digest = MessageDigest.getInstance("SHA-256")
+        file.inputStream().use { input ->
+            val buffer = ByteArray(1 shl 16)
+            while (true) {
+                val n = input.read(buffer)
+                if (n < 0) break
+                digest.update(buffer, 0, n)
+            }
+        }
+        val sha256 = digest.digest().joinToString("") { byte -> String.format("%02x", byte) }
+        if (sha256 != sherpaSha256) {
+            file.delete()
+            throw GradleException("sherpa-onnx $sherpaVersion: sha256 is $sha256, not $sherpaSha256")
+        }
+    }
 }
 
 // The engine: core/ built by cargo-ndk into jniLibs, before anything else.
@@ -48,9 +86,10 @@ val cargoNdk = tasks.register<Exec>("cargoNdk") {
     )
 }
 
-tasks.named("preBuild") { dependsOn(cargoNdk) }
+tasks.named("preBuild") { dependsOn(cargoNdk, sherpa) }
 
 dependencies {
+    implementation(files(sherpaAar))
     implementation(platform("androidx.compose:compose-bom:2025.06.01"))
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.material:material-icons-core")

@@ -64,6 +64,23 @@ pub extern "system" fn Java_io_github_tyetladd_wavo_Native_models<'l>(
   })
 }
 
+/// Calls `progress.onProgress(done, total)` a few times a second; `false` from it, or an
+/// exception in it (which goes on to Kotlin), stops the download.
+fn reporter<'a>(env: &'a mut JNIEnv<'_>, progress: &'a JObject<'_>) -> impl FnMut(u64, u64) -> bool + 'a {
+  let mut last: Option<Instant> = None;
+  move |done, total| {
+    let due = last.is_none_or(|at| at.elapsed() > Duration::from_millis(200));
+    if !due && done < total {
+      return true;
+    }
+
+    last = Some(Instant::now());
+    let args = [JValue::Long(done as jlong), JValue::Long(total as jlong)];
+    let go = env.call_method(progress, "onProgress", "(JJ)Z", &args).and_then(|v| v.z());
+    go.unwrap_or(false)
+  }
+}
+
 /// `pull(root: String, name: String, progress: Progress): String`: downloads a model and returns
 /// its file. `progress.onProgress(done: Long, total: Long): Boolean` is called a few times a
 /// second, and stops the download by returning `false`.
@@ -77,20 +94,42 @@ pub extern "system" fn Java_io_github_tyetladd_wavo_Native_pull<'l>(
 ) -> jstring {
   guard(&mut env, std::ptr::null_mut(), |env| {
     let (root, name) = (PathBuf::from(string(env, &root)?), string(env, &name)?);
-    let mut last: Option<Instant> = None;
-    let path = engine::pull(&root, &name, |done, total| {
-      let due = last.is_none_or(|at| at.elapsed() > Duration::from_millis(200));
-      if !due && done < total {
-        return true;
-      }
-
-      last = Some(Instant::now());
-      let args = [JValue::Long(done as jlong), JValue::Long(total as jlong)];
-      let go = env.call_method(&progress, "onProgress", "(JJ)Z", &args).and_then(|v| v.z());
-      // A callback that threw stops the download, and its exception goes on to Kotlin.
-      go.unwrap_or(false)
-    })?;
+    let path = engine::pull(&root, &name, reporter(env, &progress))?;
     java(env, path.to_string_lossy().into_owned())
+  })
+}
+
+/// `fetch(root: String, url: String, name: String, progress: Progress): String`: downloads the
+/// file at `url` into `root` as `name` and returns it, as `pull` does a model.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_io_github_tyetladd_wavo_Native_fetch<'l>(
+  mut env: JNIEnv<'l>,
+  _: JClass<'l>,
+  root: JString<'l>,
+  url: JString<'l>,
+  name: JString<'l>,
+  progress: JObject<'l>,
+) -> jstring {
+  guard(&mut env, std::ptr::null_mut(), |env| {
+    let root = PathBuf::from(string(env, &root)?);
+    let (url, name) = (string(env, &url)?, string(env, &name)?);
+    let path = engine::fetch(&root, &url, &name, reporter(env, &progress))?;
+    java(env, path.to_string_lossy().into_owned())
+  })
+}
+
+/// `clean(text: String, language: String?): String`: the text without hesitation sounds and with
+/// Russian numbers in digits, as `transcribe` cleans its own.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_io_github_tyetladd_wavo_Native_clean<'l>(
+  mut env: JNIEnv<'l>,
+  _: JClass<'l>,
+  text: JString<'l>,
+  language: JString<'l>,
+) -> jstring {
+  guard(&mut env, std::ptr::null_mut(), |env| {
+    let (text, language) = (string(env, &text)?, optional(env, &language)?);
+    java(env, engine::clean(&text, language.as_deref()))
   })
 }
 

@@ -96,7 +96,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
-        dictation = Dictation(this)
+        dictation = Dictation(this, conversations = true)
         Models.refresh()
         setContent { Theme { Wavo(dictation) } }
     }
@@ -251,7 +251,8 @@ private fun DictateScreen(dictation: Dictation, toModels: () -> Unit) {
         val status = when {
             recording -> "Listening  ${clock(now - ui.startedAt)}"
             ui.phase == Dictation.Phase.Transcribing ->
-                (engine as? Engine.State.Loading)?.let { "Loading ${it.model}…" } ?: "Transcribing…"
+                (engine as? Engine.State.Loading)?.let { "Loading ${it.model}…" }
+                    ?: if (ui.conversation) "Transcribing and telling the speakers apart…" else "Transcribing…"
             chosen == null -> "No model yet"
             ui.error != null -> ui.error!!
             engine is Engine.State.Loading -> "Loading ${(engine as Engine.State.Loading).model}…"
@@ -259,6 +260,7 @@ private fun DictateScreen(dictation: Dictation, toModels: () -> Unit) {
             engine is Engine.State.Ready -> "$chosen is ready"
             else -> chosen
         }
+        if (chosen != null) ConversationRow(enabled = ui.phase == Dictation.Phase.Idle)
         Text(status, textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(16.dp))
 
@@ -292,6 +294,56 @@ private fun DictateScreen(dictation: Dictation, toModels: () -> Unit) {
         Spacer(Modifier.height(12.dp))
         if (!allowed && chosen != null) {
             Text("Wavo asks for the microphone at the first tap.", style = MaterialTheme.typography.bodySmall)
+        }
+    }
+}
+
+/** The switch that makes the next recording a conversation, and the speaker models' download under it. */
+@Composable
+private fun ConversationRow(enabled: Boolean) {
+    val settings = App.instance.settings
+    var on by remember { mutableStateOf(settings.conversation) }
+    val ready by Speakers.ready.collectAsState()
+    val download by Speakers.download.collectAsState()
+
+    Column(Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("Conversation")
+                Text(
+                    "Labels who said what, after the stop. Up to 10 minutes.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Switch(checked = on, enabled = enabled, onCheckedChange = {
+                on = it
+                settings.conversation = it
+            })
+        }
+
+        val pull = download
+        if (on && !ready) {
+            when {
+                pull != null && pull.error == null -> {
+                    LinearProgressIndicator(
+                        progress = { pull.done.toFloat() / pull.total },
+                        modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
+                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("${size(pull.done)} of ${size(pull.total)}", Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
+                        TextButton(onClick = { Speakers.cancel() }) { Text("Cancel") }
+                    }
+                }
+                else -> {
+                    pull?.error?.let {
+                        Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                    }
+                    FilledTonalButton(onClick = { Speakers.download() }) {
+                        Text(if (pull?.error != null) "Retry" else "Download the speaker models (${size(Speakers.size)})")
+                    }
+                }
+            }
         }
     }
 }
@@ -552,6 +604,14 @@ private fun SettingsScreen() {
             ) {
                 unloadAfter = it
                 settings.unloadAfterMinutes = it
+            }
+        }
+
+        val speakers by Speakers.ready.collectAsState()
+        if (speakers) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("Speaker models, ${size(Speakers.size)}", Modifier.weight(1f))
+                OutlinedButton(onClick = { Speakers.delete() }) { Text("Delete") }
             }
         }
 

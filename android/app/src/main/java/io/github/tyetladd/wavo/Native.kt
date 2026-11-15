@@ -21,6 +21,10 @@ object Native {
 
     @JvmStatic external fun pull(root: String, name: String, progress: Progress): String
 
+    @JvmStatic external fun fetch(root: String, url: String, name: String, progress: Progress): String
+
+    @JvmStatic external fun clean(text: String, language: String?): String
+
     @JvmStatic external fun remove(root: String, name: String): Long
 
     @JvmStatic external fun load(path: String, backend: String): Long

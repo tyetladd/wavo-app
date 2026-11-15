@@ -7,7 +7,7 @@ A first version: it builds, and its engine and JNI layer are tested on a compute
 ## What is here
 
 - `core/`: a Rust library, the engine behind JNI. It wraps wavo (the CPU backend with NEON, or Vulkan), downloads models into the app's folder (its own downloader: wavo's takes file locks, which Rust lacks on Android), and reuses the desktop app's `src/cleanup.rs` and `src/numbers.rs` as they are. It keeps the engine's threads off the phone's slowest cores.
-- `app/`: the Kotlin app. `WavoIme` is the keyboard, `MainActivity` the screens (Dictate, Models, History, Settings), `Engine` the one thread that owns the model.
+- `app/`: the Kotlin app. `Speakers` tells a conversation's speakers apart. `WavoIme` is the keyboard, `MainActivity` the screens (Dictate, Models, History, Settings), `Engine` the one thread that owns the model.
 
 ## Build
 
@@ -42,6 +42,12 @@ WAVO_TEST_MODEL=parakeet-ultra-Q8_0.gguf WAVO_TEST_WAV=jfk.wav WAVO_TEST_TEXT=co
 1. Open Wavo, download a model in Models (Parakeet Ultra for 25 European languages, GigaAM v3 for Russian, Moonshine for the smallest) and allow the microphone at the first dictation.
 2. Settings › Keyboard › Turn on, and enable "Wavo voice keyboard".
 3. In any app, switch to the Wavo keyboard, then tap the microphone and tap again to stop, or hold it and speak. ⌨ goes back to the previous keyboard.
+
+## Conversations
+
+The switch "Conversation" on the Dictate screen labels who said what: `Speaker 1: …`, a paragraph a turn. The wavo engine has no diarization, so this part is [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) with pyannote's segmentation model and a 3D-Speaker embedding model (34 MB, downloaded once from the switch). After the stop the engine transcribes the recording while sherpa-onnx tells the speakers apart on the CPU, and each word goes to the speaker it starts with. The keyboard has no such mode.
+
+The sherpa-onnx AAR isn't in git: the `sherpaAar` Gradle task downloads it from GitHub's releases into `app/libs/` and checks its SHA-256.
 
 ## Not yet
 

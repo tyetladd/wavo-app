@@ -23,10 +23,13 @@ data class Heard(
     val device: String,
     /** From the stop to the text, for a dictation; less than [tookMs] when pieces ran while speaking. */
     val waitMs: Long = 0,
+    /** The text's words with their times, before any cleanup. */
+    val words: List<Word> = emptyList(),
 ) {
     companion object {
         fun parse(json: String, model: String, device: String): Heard {
             val o = JSONObject(json)
+            val words = o.optJSONArray("words")
             return Heard(
                 text = o.getString("text"),
                 language = if (o.isNull("language")) null else o.getString("language"),
@@ -34,6 +37,9 @@ data class Heard(
                 audioMs = o.getLong("audio_ms"),
                 model = model,
                 device = device,
+                words = (0 until (words?.length() ?: 0)).map { i ->
+                    words!!.getJSONObject(i).let { Word(it.getLong("ms"), it.getString("text")) }
+                },
             )
         }
     }
@@ -65,14 +71,17 @@ object Engine {
     private var device = ""
     private var unload: ScheduledFuture<*>? = null
 
-    /** The text of 16 kHz mono samples; `done` runs on the main thread. */
-    fun transcribe(pcm: FloatArray, done: (Result<Heard>) -> Unit) {
+    /**
+     * The text of 16 kHz mono samples; `done` runs on the main thread. `clean` is the setting's
+     * unless given: a conversation cleans its turns itself, after the words found their speakers.
+     */
+    fun transcribe(pcm: FloatArray, clean: Boolean? = null, done: (Result<Heard>) -> Unit) {
         worker.execute {
             val settings = App.instance.settings
             val heard = runCatching {
                 val model = ensure()
                 val json = onGpu(loaded?.endsWith("|gpu") == true) {
-                    Native.transcribe(handle, pcm, settings.language, settings.clean)
+                    Native.transcribe(handle, pcm, settings.language, clean ?: settings.clean)
                 }
                 Heard.parse(json, model, device)
             }

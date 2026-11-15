@@ -48,6 +48,11 @@ class Settings(context: Context) {
         get() = prefs.getBoolean("live", true)
         set(value) = prefs.edit().putBoolean("live", value).apply()
 
+    /** The app's screen records a conversation and labels its speakers. */
+    var conversation: Boolean
+        get() = prefs.getBoolean("conversation", false)
+        set(value) = prefs.edit().putBoolean("conversation", value).apply()
+
     /** Minutes without a dictation after which the model leaves the memory. */
     var unloadAfterMinutes: Int
         get() = prefs.getInt("unload_after", 10)
@@ -74,6 +79,7 @@ class App : Application() {
             settings.backend = "cpu"
             settings.gpuCrashed = true
         }
+        Speakers.refresh()
         // What the first builds' downloader left: nothing reads it now.
         File(filesDir, "hub").deleteRecursively()
     }

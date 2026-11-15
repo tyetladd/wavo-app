@@ -4,6 +4,8 @@ local.properties
 core/target/
 # Built from core/ by the cargoNdk task.
 app/src/main/jniLibs/
+# Downloaded by the sherpaAar task.
+app/libs/
 *.apk
 .idea/
 *.iml

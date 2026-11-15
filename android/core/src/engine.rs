@@ -73,6 +73,11 @@ pub fn pull(root: &Path, name: &str, progress: impl FnMut(u64, u64) -> bool) -> 
   store::pull(root, name, progress)
 }
 
+/// Downloads the file at `url` into `root` as `name`: a speaker model. As [pull] otherwise.
+pub fn fetch(root: &Path, url: &str, name: &str, progress: impl FnMut(u64, u64) -> bool) -> Result<PathBuf> {
+  store::fetch(root, url, name, progress)
+}
+
 /// Deletes a model from `root`; the bytes freed.
 pub fn remove(root: &Path, name: &str) -> Result<u64> {
   store::remove(root, name)
@@ -80,10 +85,48 @@ pub fn remove(root: &Path, name: &str) -> Result<u64> {
 
 // MARK: Engine
 
+/// A word of a recording and when it starts, in milliseconds from the recording's start: as
+/// exact as the model's tokens are (40 ms for GigaAM, 80 ms for Parakeet, Whisper's segment, and
+/// 0 for Moonshine, which has no times).
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Word {
+  pub ms: u32,
+  pub text: String,
+}
+
+/// The words of a transcript's tokens. A token's piece starts a word with `▁` (SentencePiece) or
+/// a space (Whisper, and the space of a character vocabulary); the word starts with its first
+/// token.
+pub fn words<'a>(tokens: impl Iterator<Item = (u32, &'a str)>) -> Vec<Word> {
+  let mut out: Vec<Word> = Vec::new();
+  let mut open = false;
+  for (ms, piece) in tokens {
+    for c in piece.chars() {
+      if c == '▁' || c.is_whitespace() {
+        open = false;
+      } else if open {
+        out.last_mut().expect("an open word").text.push(c);
+      } else {
+        out.push(Word { ms, text: c.to_string() });
+        open = true;
+      }
+    }
+  }
+
+  out
+}
+
+/// `text` as the person gets it: the desktop app's cleanup, in the language given.
+pub fn clean(text: &str, language: Option<&str>) -> String {
+  cleanup::clean(text.trim(), language)
+}
+
 /// What a recording said.
 #[derive(Debug, Default, PartialEq, Serialize)]
 pub struct Heard {
   pub text: String,
+  /// The text's words with their times, before any cleanup.
+  pub words: Vec<Word>,
   /// The language of the text, when the model says it.
   pub language: Option<String>,
   /// How long the engine took, and how long the recording is.
@@ -151,7 +194,8 @@ impl Engine {
       true => cleanup::clean(heard.text.trim(), spoken),
       false => heard.text.trim().to_owned(),
     };
-    Ok(Heard { text, language: heard.language, took_ms, audio_ms })
+    let words = words(heard.tokens.iter().map(|t| (t.start_ms, t.piece.as_str())));
+    Ok(Heard { text, words, language: heard.language, took_ms, audio_ms })
   }
 }
 
@@ -169,6 +213,22 @@ mod tests {
 
     let json = serde_json::to_string(&all).unwrap();
     assert!(json.contains(r#""name":"parakeet-ultra""#));
+  }
+
+  #[test]
+  fn words_start_with_their_first_token() {
+    let said = |tokens: &[(u32, &str)]| -> Vec<(u32, String)> {
+      words(tokens.iter().copied()).into_iter().map(|w| (w.ms, w.text)).collect()
+    };
+    let w = |ms: u32, text: &str| (ms, text.to_owned());
+
+    // SentencePiece, as Parakeet and GigaAM e2e write it.
+    let pieces = [(80, "▁And"), (240, "▁so"), (400, ","), (480, "▁my"), (640, "▁fel"), (720, "low")];
+    assert_eq!(said(&pieces), [w(80, "And"), w(240, "so,"), w(480, "my"), w(640, "fellow")]);
+    // Whisper's pieces open with a space; a character vocabulary has the space as a token.
+    assert_eq!(said(&[(0, " Hello"), (0, " wor"), (0, "ld"), (0, ".")]), [w(0, "Hello"), w(0, "world.")]);
+    assert_eq!(said(&[(40, "д"), (80, "а"), (120, " "), (200, "н"), (240, "ет")]), [w(40, "да"), w(200, "нет")]);
+    assert_eq!(said(&[(0, ""), (0, "▁")]), []);
   }
 
   #[test]
@@ -194,6 +254,10 @@ mod tests {
     let heard = engine.transcribe(&pcm, None, true).unwrap();
     eprintln!("{}: {heard:?}", engine.device());
     assert!(!heard.text.is_empty());
+    // The words are the text's, in order, and their times go up.
+    let joined = heard.words.iter().map(|w| w.text.as_str()).collect::<Vec<_>>().join(" ");
+    assert_eq!(joined, engine.transcribe(&pcm, None, false).unwrap().text);
+    assert!(heard.words.windows(2).all(|w| w[0].ms <= w[1].ms));
     if let Ok(word) = std::env::var("WAVO_TEST_TEXT") {
       assert!(heard.text.to_lowercase().contains(&word.to_lowercase()), "{}", heard.text);
     }

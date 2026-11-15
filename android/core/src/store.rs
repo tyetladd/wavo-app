@@ -59,15 +59,29 @@ impl Failed {
 /// Downloads a model into `root` and returns its file; a download cut short resumes from its
 /// `.part`. `progress` gets the bytes done and the total, and stops the download by returning
 /// `false`, which fails it with `cancelled`.
-pub fn pull(root: &Path, name: &str, mut progress: impl FnMut(u64, u64) -> bool) -> Result<PathBuf> {
+pub fn pull(root: &Path, name: &str, progress: impl FnMut(u64, u64) -> bool) -> Result<PathBuf> {
   let m = lookup(name).map_err(text)?;
   if let Some(path) = find(root, m) {
     return Ok(path);
   }
 
-  fs::create_dir_all(root).map_err(text)?;
   let url = format!("https://huggingface.co/{}/resolve/main/{}", m.repo(), m.file());
-  let (part, file) = (part(root, m), file(root, m));
+  fetch(root, &url, &m.file(), progress)
+}
+
+/// Downloads the file at `url` into `root` as `name`, as [pull] does a model: the speaker models,
+/// which aren't wavo's. `name` is a plain file name.
+pub fn fetch(root: &Path, url: &str, name: &str, mut progress: impl FnMut(u64, u64) -> bool) -> Result<PathBuf> {
+  if name.is_empty() || name.contains(['/', '\\']) || name.starts_with('.') {
+    return Err(format!("{name:?} isn't a file name"));
+  }
+
+  let (part, file) = (root.join(format!("{name}.part")), root.join(name));
+  if file.is_file() {
+    return Ok(file);
+  }
+
+  fs::create_dir_all(root).map_err(text)?;
   let agent: ureq::Agent = ureq::Agent::config_builder()
     .timeout_connect(Some(CONNECT))
     .timeout_recv_response(Some(IDLE))
@@ -77,7 +91,7 @@ pub fn pull(root: &Path, name: &str, mut progress: impl FnMut(u64, u64) -> bool)
 
   let mut retry = 0;
   loop {
-    match download(&agent, &url, &part, &mut progress) {
+    match download(&agent, url, &part, &mut progress) {
       Ok(()) => break,
       Err(e) if e.retry && retry < RETRIES => {
         std::thread::sleep(Duration::from_secs(1 << retry));
@@ -175,6 +189,9 @@ mod tests {
     assert_eq!(remove(&root, "gigaam-v3"), Ok(14));
     assert_eq!(find(&root, m), None);
     assert!(remove(&root, "no-such-model").is_err());
+    // A name that would leave the folder never reaches the network.
+    assert!(fetch(&root, "https://example.invalid/x", "../x", |_, _| true).is_err());
+    assert!(fetch(&root, "https://example.invalid/x", "", |_, _| true).is_err());
     fs::remove_dir_all(&root).unwrap();
   }
 }
