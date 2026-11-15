@@ -30,6 +30,19 @@ class Settings(context: Context) {
         get() = prefs.getBoolean("clean", true)
         set(value) = prefs.edit().putBoolean("clean", value).apply()
 
+    /**
+     * Set while the GPU loads or runs a model, and written at once: a GPU driver that crashes
+     * takes the app with it, and the next start finds this still set.
+     */
+    var gpuBusy: Boolean
+        get() = prefs.getBoolean("gpu_busy", false)
+        set(value) { prefs.edit().putBoolean("gpu_busy", value).commit() }
+
+    /** The GPU crashed the app, and the engine went back to the CPU: the settings screen says so. */
+    var gpuCrashed: Boolean
+        get() = prefs.getBoolean("gpu_crashed", false)
+        set(value) = prefs.edit().putBoolean("gpu_crashed", value).apply()
+
     /** Minutes without a dictation after which the model leaves the memory. */
     var unloadAfterMinutes: Int
         get() = prefs.getInt("unload_after", 10)
@@ -50,6 +63,12 @@ class App : Application() {
         instance = this
         settings = Settings(this)
         history = History(this)
+        // The app died with the GPU at work: back to the CPU, or every start would crash again.
+        if (settings.gpuBusy) {
+            settings.gpuBusy = false
+            settings.backend = "cpu"
+            settings.gpuCrashed = true
+        }
         // What the first builds' downloader left: nothing reads it now.
         File(filesDir, "hub").deleteRecursively()
     }

@@ -69,7 +69,10 @@ object Engine {
             val settings = App.instance.settings
             val heard = runCatching {
                 val model = ensure()
-                Heard.parse(Native.transcribe(handle, pcm, settings.language, settings.clean), model, device)
+                val json = onGpu(loaded?.endsWith("|gpu") == true) {
+                    Native.transcribe(handle, pcm, settings.language, settings.clean)
+                }
+                Heard.parse(json, model, device)
             }
             heard.exceptionOrNull()?.let(::failed)
             later()
@@ -105,11 +108,24 @@ object Engine {
 
         free()
         state.value = State.Loading(name)
-        handle = Native.load(path, backend)
+        handle = onGpu(backend == "gpu") { Native.load(path, backend) }
         loaded = key
         device = Native.device(handle)
         state.value = State.Ready(name, device)
         return name
+    }
+
+    /** Runs a call of the engine; one on the GPU is marked, for the next start to see if it crashed the app. */
+    private fun <T> onGpu(gpu: Boolean, call: () -> T): T {
+        if (!gpu) return call()
+
+        val settings = App.instance.settings
+        settings.gpuBusy = true
+        try {
+            return call()
+        } finally {
+            settings.gpuBusy = false
+        }
     }
 
     private fun failed(e: Throwable) {

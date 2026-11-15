@@ -484,6 +484,7 @@ private fun SettingsScreen() {
     var backend by remember { mutableStateOf(settings.backend) }
     var language by remember { mutableStateOf(settings.language) }
     var clean by remember { mutableStateOf(settings.clean) }
+    var crashed by remember { mutableStateOf(settings.gpuCrashed) }
     var unloadAfter by remember { mutableIntStateOf(settings.unloadAfterMinutes) }
 
     Column(
@@ -509,11 +510,22 @@ private fun SettingsScreen() {
             backend = "cpu"
             settings.backend = "cpu"
             Engine.unload()
+            Engine.prewarm()
         }
         Choice("GPU (experimental)", "Vulkan. Untested on phones: it may be faster, fail to load or crash the app.", backend == "gpu") {
             backend = "gpu"
             settings.backend = "gpu"
+            settings.gpuCrashed = false
+            crashed = false
             Engine.unload()
+            Engine.prewarm()
+        }
+        if (crashed) {
+            Text(
+                "The GPU crashed the app last time, so the engine went back to the CPU.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error,
+            )
         }
         Text(
             when (val e = engine) {
