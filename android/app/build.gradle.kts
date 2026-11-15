@@ -18,16 +18,33 @@ android {
         applicationId = "io.github.tyetladd.wavo"
         minSdk = 29
         targetSdk = 35
-        versionCode = 6
-        versionName = "0.3.1"
+        versionCode = 7
+        versionName = "0.4.0"
         ndk { abiFilters += abis }
+    }
+
+    // The release key, when ~/.gradle/gradle.properties or -P names one: wavo.keystore (a path),
+    // wavo.keystore.password, wavo.key.alias and wavo.key.password. Without it the release is
+    // signed with this machine's debug key: installable, not for a store, and a build from
+    // another machine won't install over it.
+    val keystore = findProperty("wavo.keystore") as String?
+    signingConfigs {
+        if (keystore != null) {
+            create("release") {
+                storeFile = file(keystore)
+                storePassword = findProperty("wavo.keystore.password") as String?
+                keyAlias = findProperty("wavo.key.alias") as String?
+                keyPassword = findProperty("wavo.key.password") as String?
+            }
+        }
     }
 
     buildTypes {
         release {
-            isMinifyEnabled = false
-            // Signed with the debug key until there is a release one: installable, not for a store.
-            signingConfig = signingConfigs.getByName("debug")
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            signingConfig = signingConfigs.getByName(if (keystore != null) "release" else "debug")
         }
     }
 

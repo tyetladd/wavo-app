@@ -564,13 +564,12 @@ private fun SettingsScreen() {
         }
 
         Section("Engine")
-        Choice("CPU", "The phone's fast cores. Works on every phone.", backend == "cpu") {
-            backend = "cpu"
-            settings.backend = "cpu"
-            Engine.unload()
-            Engine.prewarm()
+        // The engine may have gone back to the CPU by itself: the stored value shows.
+        LaunchedEffect(engine) {
+            backend = settings.backend
+            crashed = settings.gpuCrashed
         }
-        Choice("GPU (experimental)", "Vulkan. Untested on phones: it may be faster, fail to load or crash the app.", backend == "gpu") {
+        Choice("GPU", "Vulkan. The faster one where it works; if it fails, the engine goes back to the CPU.", backend == "gpu") {
             backend = "gpu"
             settings.backend = "gpu"
             settings.gpuCrashed = false
@@ -578,9 +577,15 @@ private fun SettingsScreen() {
             Engine.unload()
             Engine.prewarm()
         }
+        Choice("CPU", "The phone's fast cores. Works on every phone.", backend == "cpu") {
+            backend = "cpu"
+            settings.backend = "cpu"
+            Engine.unload()
+            Engine.prewarm()
+        }
         if (crashed) {
             Text(
-                "The GPU crashed the app last time, so the engine went back to the CPU.",
+                "The GPU failed or crashed the app last time, so the engine went back to the CPU.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.error,
             )

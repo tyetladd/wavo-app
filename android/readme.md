@@ -21,6 +21,8 @@ gradle :app:assembleDebug        # builds core/ first; the APK is in app/build/o
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
 
+`gradle :app:assembleRelease` builds the release: shrunk by R8 and not debuggable, in `app/build/outputs/apk/release/`. It is signed with the key named by the Gradle properties `wavo.keystore`, `wavo.keystore.password`, `wavo.key.alias` and `wavo.key.password`, and without them with the machine's debug key.
+
 `-Pwavo.abis=arm64-v8a,x86_64` adds the emulator's ABI (`rustup target add x86_64-linux-android` first).
 
 ## Test
@@ -55,4 +57,4 @@ The sherpa-onnx AAR isn't in git: the `sherpaAar` Gradle task downloads it from 
 - A system speech recognizer service, for other keyboards' microphone buttons.
 - Recordings in the history, and transcribing audio files.
 - A download that goes on with the app closed: it stops with the app and resumes at the next tap on Download.
-- The GPU backend is a setting, untested on phone GPUs.
+- The GPU (Vulkan) is the default and measured on one phone, a Pixel 7 Pro (Mali-G710): 7× real time with GigaAM v3 against 4× on the CPU. Elsewhere it is untested; the engine goes back to the CPU when the GPU fails to load or crashes the app.

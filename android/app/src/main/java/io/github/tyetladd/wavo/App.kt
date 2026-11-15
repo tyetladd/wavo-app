@@ -15,9 +15,12 @@ class Settings(context: Context) {
         get() = prefs.getString("model", null)
         set(value) = prefs.edit().putString("model", value).apply()
 
-    /** `cpu`, or `gpu` (Vulkan, experimental on phones). */
+    /**
+     * `gpu` (Vulkan), the default: about twice the CPU's speed on a Pixel 7 Pro. Or `cpu`, which
+     * the engine also goes back to, here in the settings, when the GPU fails or crashes the app.
+     */
     var backend: String
-        get() = prefs.getString("backend", "cpu") ?: "cpu"
+        get() = prefs.getString("backend", "gpu") ?: "gpu"
         set(value) = prefs.edit().putString("backend", value).apply()
 
     /** The language of the speech as a code, `null` to leave it to the model. */
@@ -38,7 +41,7 @@ class Settings(context: Context) {
         get() = prefs.getBoolean("gpu_busy", false)
         set(value) { prefs.edit().putBoolean("gpu_busy", value).commit() }
 
-    /** The GPU crashed the app, and the engine went back to the CPU: the settings screen says so. */
+    /** The GPU failed or crashed the app, and the engine went back to the CPU: the settings screen says so. */
     var gpuCrashed: Boolean
         get() = prefs.getBoolean("gpu_crashed", false)
         set(value) = prefs.edit().putBoolean("gpu_crashed", value).apply()

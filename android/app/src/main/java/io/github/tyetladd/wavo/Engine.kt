@@ -113,14 +113,22 @@ object Engine {
         val settings = App.instance.settings
         val name = settings.model ?: error("No model is chosen: download one in Wavo")
         val path = Models.path(name) ?: error("The model $name isn't downloaded")
-        val backend = settings.backend
-        val key = "$path|$backend"
-        if (handle != 0L && loaded == key) return name
+        var backend = settings.backend
+        if (handle != 0L && loaded == "$path|$backend") return name
 
         free()
         state.value = State.Loading(name)
-        handle = onGpu(backend == "gpu") { Native.load(path, backend) }
-        loaded = key
+        handle = try {
+            onGpu(backend == "gpu") { Native.load(path, backend) }
+        } catch (e: RuntimeException) {
+            if (backend != "gpu") throw e
+            // A phone without a GPU the engine can use: the setting goes to the CPU, and says why.
+            backend = "cpu"
+            settings.backend = backend
+            settings.gpuCrashed = true
+            Native.load(path, backend)
+        }
+        loaded = "$path|$backend"
         device = Native.device(handle)
         state.value = State.Ready(name, device)
         return name
