@@ -60,6 +60,19 @@ class Settings(context: Context) {
     var unloadAfterMinutes: Int
         get() = prefs.getInt("unload_after", 10)
         set(value) = prefs.edit().putInt("unload_after", value).apply()
+
+    /**
+     * Keep each dictation's recording beside its text in History, as a WAV in the app's folder.
+     * On by default, as on the desktop; nothing is pruned, so they stay until deleted.
+     */
+    var keepRecordings: Boolean
+        get() = prefs.getBoolean("keep_recordings", true)
+        set(value) = prefs.edit().putBoolean("keep_recordings", value).apply()
+
+    /** The recording pill and its moving gradient; off, the microphone button's pulse is all. */
+    var animate: Boolean
+        get() = prefs.getBoolean("animate", true)
+        set(value) = prefs.edit().putBoolean("animate", value).apply()
 }
 
 class App : Application() {

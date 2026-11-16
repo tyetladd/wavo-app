@@ -42,4 +42,12 @@ object Pill {
     fun push(levels: List<Float>, level: Float): List<Float> = (levels + level).takeLast(BARS)
 
     fun lerp(a: Float, b: Float, k: Float): Float = a + (b - a) * k
+
+    /**
+     * Whether the pill draws and asks the core for its gradient: only while a dictation shows, and
+     * only with the setting on. Off, the microphone button's own pulse is the whole visual and no
+     * frame is asked for — which is where the saving is.
+     */
+    fun animates(phase: Dictation.Phase, animate: Boolean): Boolean =
+        animate && phase != Dictation.Phase.Idle
 }

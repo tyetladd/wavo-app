@@ -550,6 +550,8 @@ private fun SettingsScreen() {
     var clean by remember { mutableStateOf(settings.clean) }
     var crashed by remember { mutableStateOf(settings.gpuCrashed) }
     var live by remember { mutableStateOf(settings.live) }
+    var keep by remember { mutableStateOf(settings.keepRecordings) }
+    var animate by remember { mutableStateOf(settings.animate) }
     var unloadAfter by remember { mutableIntStateOf(settings.unloadAfterMinutes) }
 
     Column(
@@ -676,6 +678,38 @@ private fun SettingsScreen() {
             Switch(checked = clean, onCheckedChange = {
                 clean = it
                 settings.clean = it
+            })
+        }
+
+        Section("Recording")
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("Keep recordings")
+                Text(
+                    "Each dictation's audio is kept beside its text in History, to play or share. Nothing " +
+                        "leaves the phone, and deleting a dictation deletes its recording with it.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Switch(checked = keep, onCheckedChange = {
+                keep = it
+                settings.keepRecordings = it
+            })
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("Recording animation")
+                Text(
+                    "The pill of colour and bars while you speak, as on the Mac. Off, the microphone " +
+                        "button's pulse is all, and the phone does less work.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Switch(checked = animate, onCheckedChange = {
+                animate = it
+                settings.animate = it
             })
         }
 

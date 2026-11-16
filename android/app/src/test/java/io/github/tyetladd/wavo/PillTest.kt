@@ -3,6 +3,7 @@
 package io.github.tyetladd.wavo
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import kotlin.math.abs
@@ -75,5 +76,16 @@ class PillTest {
     fun rms_of_nothing_is_silence() {
         assertEquals(0f, rms(FloatArray(0), 0, 0), 0f)
         assertTrue(abs(rms(FloatArray(4), 2, 2)) < 1e-6f)
+    }
+
+    @Test
+    fun the_animation_setting_gates_every_tick() {
+        // Off: nothing animates, so no gradient is asked for and no frame is redrawn.
+        assertFalse(Pill.animates(Dictation.Phase.Recording, animate = false))
+        assertFalse(Pill.animates(Dictation.Phase.Transcribing, animate = false))
+        // On: only while there is something to show. Idle asks for nothing.
+        assertTrue(Pill.animates(Dictation.Phase.Recording, animate = true))
+        assertTrue(Pill.animates(Dictation.Phase.Transcribing, animate = true))
+        assertFalse(Pill.animates(Dictation.Phase.Idle, animate = true))
     }
 }
