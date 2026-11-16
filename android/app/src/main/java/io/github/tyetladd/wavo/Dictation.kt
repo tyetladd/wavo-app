@@ -61,6 +61,10 @@ class Dictation(
     private var sample: Heard? = null
     private var conversation = false
     private var note: String? = null
+    /** The whole recording, kept from the stop until its row is written. */
+    private var audio: FloatArray? = null
+    /** When the recording started, in wall-clock milliseconds: the recording is named for it. */
+    private var startedWall = 0L
     private val words = ArrayList<Word>()
     private var segments: Result<List<Segment>>? = null
 
@@ -85,6 +89,8 @@ class Dictation(
         }
 
         session++
+        startedWall = System.currentTimeMillis()
+        audio = null
         conversation = conversations && settings.conversation
         pieces = if (settings.live) Pieces() else null
         fed = 0
@@ -155,6 +161,7 @@ class Dictation(
         if (ui.value.phase != Phase.Recording) return
 
         val all = recorder.stop()
+        audio = all
         audioMs = all.size * 1000L / Recorder.RATE
         val pieces = pieces
         val rest = pieces?.let {
@@ -220,8 +227,31 @@ class Dictation(
         ui.value = Ui(error = error, last = kept ?: ui.value.last)
         session++
         if (kept != null) {
-            App.instance.history.add(kept)
+            // The text goes at once, so the keyboard types it without waiting for the disk.
             onText(kept)
+            keep(kept)
+        }
+    }
+
+    /**
+     * The recording, when the setting keeps it, written before the history row that points at it:
+     * a crash in between leaves a file to reconcile, never a row pointing at nothing. A write that
+     * fails leaves the text kept with no audio.
+     */
+    private fun keep(heard: Heard) {
+        val pcm = audio
+        val history = App.instance.history
+        if (pcm == null || !App.instance.settings.keepRecordings) {
+            history.add(heard)
+            return
+        }
+
+        val name = history.recordings.name(startedWall)
+        kotlin.concurrent.thread(name = "wavo-wav") {
+            val written = runCatching { history.recordings.write(name, pcm) }.isSuccess
+            android.os.Handler(android.os.Looper.getMainLooper()).post {
+                history.add(heard, if (written) name else null)
+            }
         }
     }
 

@@ -9,6 +9,7 @@ import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import android.graphics.Bitmap
+import android.media.MediaPlayer
 import android.os.SystemClock
 import android.provider.Settings as SystemSettings
 import android.text.format.DateUtils
@@ -93,6 +94,7 @@ import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
+import androidx.core.content.FileProvider
 import kotlinx.coroutines.delay
 
 class MainActivity : ComponentActivity() {
@@ -547,11 +549,43 @@ private fun HistoryScreen() {
     val history = App.instance.history
     val entries by history.entries.collectAsState()
     var confirm by remember { mutableStateOf(false) }
+    var player by remember { mutableStateOf<MediaPlayer?>(null) }
+    DisposableEffect(Unit) { onDispose { player?.release(); player = null } }
+
+    /** Plays a dictation's recording; the one before stops, and it is released when it ends. */
+    fun play(entry: Entry) {
+        val file = entry.audio?.let { history.recordings.file(it) } ?: return
+        player?.release()
+        player = runCatching {
+            MediaPlayer().apply {
+                setDataSource(file.absolutePath)
+                setOnCompletionListener { mp -> mp.release(); player = null }
+                prepare()
+                start()
+            }
+        }.getOrNull()
+    }
+
+    fun shareAudio(entry: Entry) {
+        val file = entry.audio?.let { history.recordings.file(it) } ?: return
+        val uri = FileProvider.getUriForFile(context, "${context.packageName}.files", file)
+        context.startActivity(
+            Intent.createChooser(
+                Intent(Intent.ACTION_SEND).apply {
+                    type = "audio/wav"
+                    putExtra(Intent.EXTRA_STREAM, uri)
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                },
+                "Share the recording",
+            ),
+        )
+    }
 
     if (entries.isEmpty()) {
         Box(Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
             Text(
-                "Your dictations show here, from the app and from the keyboard. Only the text is kept.",
+                "Your dictations show here, from the app and from the keyboard, with their recordings " +
+                    "when Keep recordings is on.",
                 textAlign = TextAlign.Center,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -577,6 +611,12 @@ private fun HistoryScreen() {
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
+                        if (entry.audio != null) {
+                            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                TextButton(onClick = { play(entry) }) { Text("Play") }
+                                TextButton(onClick = { shareAudio(entry) }) { Text("Share audio") }
+                            }
+                        }
                     }
                     IconButton(onClick = { history.delete(entry.id) }) { Icon(Icons.Filled.Delete, "Delete") }
                 }
@@ -589,7 +629,7 @@ private fun HistoryScreen() {
         AlertDialog(
             onDismissRequest = { confirm = false },
             title = { Text("Clear the history?") },
-            text = { Text("Every dictation kept here is deleted.") },
+            text = { Text("Every dictation kept here is deleted, with its recording.") },
             confirmButton = {
                 TextButton(onClick = {
                     confirm = false
