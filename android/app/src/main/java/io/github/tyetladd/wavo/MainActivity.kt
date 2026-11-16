@@ -102,12 +102,13 @@ import androidx.core.content.pm.PackageInfoCompat
 import kotlinx.coroutines.delay
 
 class MainActivity : ComponentActivity() {
-    private lateinit var dictation: Dictation
+    // Owned by the app, not by this Activity: with the background setting on the recording goes on
+    // while the screen is left, and the service's notification drives the same instance.
+    private val dictation get() = App.instance.dictation
 
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
-        dictation = Dictation(this, conversations = true)
         Models.refresh()
         setContent { Theme { Wavo(dictation) } }
     }
@@ -118,8 +119,9 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onStop() {
-        // Recording only while the person sees it.
-        dictation.cancel()
+        // With the background setting on, the service keeps the recording and its notification.
+        // Off, leaving the app ends the dictation, as it always did.
+        if (!App.instance.settings.background) dictation.cancel()
         super.onStop()
     }
 }
@@ -238,6 +240,14 @@ private fun DictateScreen(dictation: Dictation, toModels: () -> Unit) {
             delay(200)
         }
     }
+    // With the background setting on, the service takes over the moment a dictation starts, so
+    // leaving the app keeps the microphone live under its notification.
+    LaunchedEffect(ui.phase) {
+        if (ui.phase == Dictation.Phase.Recording && App.instance.settings.background) {
+            RecordService.start(context)
+        }
+    }
+
     // The screen stays on while the person speaks.
     val view = LocalView.current
     DisposableEffect(recording) {
@@ -836,6 +846,8 @@ private fun SettingsScreen(onModels: () -> Unit) {
     var live by remember { mutableStateOf(settings.live) }
     var keep by remember { mutableStateOf(settings.keepRecordings) }
     var animate by remember { mutableStateOf(settings.animate) }
+    var background by remember { mutableStateOf(settings.background) }
+    val askNotifications = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
     var unloadAfter by remember { mutableIntStateOf(settings.unloadAfterMinutes) }
 
     Column(
@@ -1006,6 +1018,22 @@ private fun SettingsScreen(onModels: () -> Unit) {
         }
 
         Section("Recording")
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("Record in the background")
+                Text(
+                    "Leaving the app keeps the dictation going, under a notification with the time " +
+                        "and pause and stop. Off, leaving ends it. The keyboard is not affected.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Switch(checked = background, onCheckedChange = {
+                background = it
+                settings.background = it
+                if (it) askNotifications.launch(Manifest.permission.POST_NOTIFICATIONS)
+            })
+        }
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text("Keep recordings")

@@ -73,12 +73,29 @@ class Settings(context: Context) {
     var animate: Boolean
         get() = prefs.getBoolean("animate", true)
         set(value) = prefs.edit().putBoolean("animate", value).apply()
+
+    /**
+     * Keep recording when the app is left, under a notification with the time and stop/pause.
+     * Off, leaving the app ends the dictation, as it always did. The keyboard is not affected:
+     * its text goes into a field, and leaving means a different field.
+     */
+    var background: Boolean
+        get() = prefs.getBoolean("background", false)
+        set(value) = prefs.edit().putBoolean("background", value).apply()
 }
 
 class App : Application() {
     lateinit var settings: Settings
         private set
     lateinit var history: History
+        private set
+
+    /**
+     * The Dictate screen's dictation, owned here rather than by the Activity: with the background
+     * setting on it goes on while the app is left, and the service's notification drives the same
+     * instance the screen shows. The keyboard keeps one of its own.
+     */
+    lateinit var dictation: Dictation
         private set
 
     /** The models' folder: a file for each model downloaded. */
@@ -89,6 +106,8 @@ class App : Application() {
         instance = this
         settings = Settings(this)
         history = History(this)
+        dictation = Dictation(this, conversations = true)
+        RecordService.channel(this)
         // The app died with the GPU at work: back to the CPU, or every start would crash again.
         if (settings.gpuBusy) {
             settings.gpuBusy = false

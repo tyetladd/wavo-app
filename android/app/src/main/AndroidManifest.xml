@@ -4,6 +4,10 @@
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <!-- Only to download a model, once. -->
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Recording while the app is left: a microphone foreground service and its notification. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <uses-feature android:name="android.hardware.microphone" android:required="true" />
 
@@ -36,6 +40,12 @@
             </intent-filter>
             <meta-data android:name="android.view.im" android:resource="@xml/method" />
         </service>
+        <!-- Keeps the microphone live while the app is left, with the time and pause/stop. -->
+        <service
+            android:name=".RecordService"
+            android:exported="false"
+            android:foregroundServiceType="microphone" />
+
         <!-- A recording shared from History goes as a content URI, read-only, to the app chosen. -->
         <provider
             android:name="androidx.core.content.FileProvider"
