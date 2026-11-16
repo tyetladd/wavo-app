@@ -41,6 +41,7 @@ class WavoIme : InputMethodService() {
 
     private var status: TextView? = null
     private var mic: ImageButton? = null
+    private var pill: PillView? = null
 
     // The press on the microphone under way: when it went down, and what it does when it lifts.
     private var downAt = 0L
@@ -127,6 +128,13 @@ class WavoIme : InputMethodService() {
             setOnClickListener { if (!dictation.allowed || App.instance.settings.model == null) openApp() }
         }
         root.addView(status, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
+
+        // The pill as on the Mac, above the microphone; it shows only while a dictation does.
+        pill = PillView(this).apply { visibility = View.GONE }
+        root.addView(
+            pill,
+            LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT).apply { setMargins(0, dp(4), 0, dp(4)) },
+        )
 
         mic = ImageButton(this).apply {
             setImageResource(R.drawable.ic_mic)
@@ -255,6 +263,7 @@ class WavoIme : InputMethodService() {
         val scale = if (recording) 1f + minOf(ui.level * 2f, 1f) * 0.18f else 1f
         mic.scaleX = scale
         mic.scaleY = scale
+        pill?.render(ui, App.instance.settings.language ?: ui.last?.language)
     }
 
     private fun openApp() {
