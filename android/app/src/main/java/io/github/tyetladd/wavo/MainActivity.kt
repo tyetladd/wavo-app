@@ -8,6 +8,7 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
+import android.graphics.Bitmap
 import android.os.SystemClock
 import android.provider.Settings as SystemSettings
 import android.text.format.DateUtils
@@ -17,6 +18,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
@@ -87,6 +89,9 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
+import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
 
@@ -269,6 +274,66 @@ private fun DictateScreen(dictation: Dictation, toModels: () -> Unit) {
         }
         Text(status, textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(16.dp))
+
+        // The pill as on the Mac, only with the animation setting on: the core's two layers,
+        // refreshed at the desktop's own thirty-third of a second.
+        val animating = Pill.animates(ui.phase, App.instance.settings.animate)
+        val density = LocalDensity.current.density
+        var field by remember { mutableStateOf<Bitmap?>(null) }
+        var rim by remember { mutableStateOf<Bitmap?>(null) }
+        var phaseStart by remember { mutableLongStateOf(SystemClock.elapsedRealtime()) }
+        var flowStart by remember { mutableLongStateOf(SystemClock.elapsedRealtime()) }
+        var recorded by remember { mutableLongStateOf(0L) }
+        var tick by remember { mutableLongStateOf(SystemClock.elapsedRealtime()) }
+
+        LaunchedEffect(ui.phase) {
+            val now = SystemClock.elapsedRealtime()
+            // The flow carries on across the stop, as the desktop's does: only a new dictation
+            // starts it somewhere new.
+            if (ui.phase == Dictation.Phase.Recording) flowStart = now
+            if (ui.phase == Dictation.Phase.Transcribing) recorded = now - ui.startedAt
+            phaseStart = now
+        }
+        LaunchedEffect(animating) {
+            if (!animating) {
+                field = null
+                rim = null
+                return@LaunchedEffect
+            }
+            // The rim does not move: it is made once, and only the colours are made again.
+            rim = Pill.bitmap(
+                Native.gradient(Pill.WIDTH, Pill.HEIGHT, density, 0L, true),
+                Pill.WIDTH, Pill.HEIGHT, density,
+            )
+            while (true) {
+                tick = SystemClock.elapsedRealtime()
+                field = Pill.bitmap(
+                    Native.gradient(Pill.WIDTH, Pill.HEIGHT, density, tick - flowStart, false),
+                    Pill.WIDTH, Pill.HEIGHT, density,
+                )
+                delay(33)
+            }
+        }
+        if (animating) {
+            val elapsed = tick - phaseStart
+            val transcribing = ui.phase == Dictation.Phase.Transcribing
+            val settle =
+                if (transcribing) Pill.ease((elapsed.toFloat() / Pill.SETTLE_MS).coerceIn(0f, 1f)) else 0f
+            val label = clock(if (transcribing) recorded else tick - ui.startedAt)
+            val language = App.instance.settings.language ?: ui.last?.language
+            Canvas(Modifier.width(Pill.WIDTH.dp).height(Pill.HEIGHT.dp)) {
+                drawIntoCanvas {
+                    it.save()
+                    it.scale(density, density)
+                    Pill.draw(
+                        it.nativeCanvas, ui.levels, ui.phase, settle,
+                        (elapsed - Pill.SETTLE_MS).coerceAtLeast(0L), label, language, field, rim,
+                    )
+                    it.restore()
+                }
+            }
+            Spacer(Modifier.height(12.dp))
+        }
 
         if (chosen == null) {
             Button(onClick = toModels) { Text("Download a model") }

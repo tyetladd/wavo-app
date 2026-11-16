@@ -2,12 +2,21 @@
 
 package io.github.tyetladd.wavo
 
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.Paint
+import android.graphics.RectF
+import android.graphics.Typeface
+import kotlin.math.ceil
 import kotlin.math.log10
 import kotlin.math.max
+import kotlin.math.roundToInt
 
 /**
- * The recording pill's geometry and its meter, shared by the Dictate screen and the keyboard so
- * the two draw one picture. Every value is the desktop HUD's (`src/hud.rs`), in points.
+ * The recording pill: its geometry, its meter, and the one draw both the Dictate screen and the
+ * keyboard use, so the two show one picture. Every value is the desktop HUD's (`src/hud.rs`), in
+ * points; the caller scales the canvas to points before drawing.
  */
 object Pill {
     const val WIDTH = 176f
@@ -24,10 +33,21 @@ object Pill {
     const val WAVE_HIGH = 9f
     const val CHIP_W = 24f
     const val CHIP_H = 17f
+    const val CHIP_GAP = 2f
 
     /** Where the bars start, and the clock after them. */
     const val BARS_X = PAD + DOT + 10f
     const val TIME_X = BARS_X + BARS * BAR_STEP + 8f
+
+    const val SETTLE_MS = 180L
+    const val WAVE_HALF_MS = 600L
+    const val WAVE_STAGGER_MS = 75L
+    /** The clock while transcribing, and the bars' wave: dimmed, still readable on every colour. */
+    const val DIM = 0.76f
+    const val WAVE_ALPHA = 0.6f
+    /** The pill's colours, as the desktop's: a red dot, white bars, violet on the chip's white. */
+    private const val RED = 0xFFFF3B30.toInt()
+    private const val CHIP_TEXT = 0xFF3B2A78.toInt()
 
     /** A level (linear RMS) on a dB scale: −60 dBFS and below the shortest bar, −12 the tallest. */
     fun barHeight(level: Float): Float {
@@ -43,6 +63,8 @@ object Pill {
 
     fun lerp(a: Float, b: Float, k: Float): Float = a + (b - a) * k
 
+    fun ease(t: Float): Float = t * t * (3f - 2f * t)
+
     /**
      * Whether the pill draws and asks the core for its gradient: only while a dictation shows, and
      * only with the setting on. Off, the microphone button's own pulse is the whole visual and no
@@ -50,4 +72,114 @@ object Pill {
      */
     fun animates(phase: Dictation.Phase, animate: Boolean): Boolean =
         animate && phase != Dictation.Phase.Idle
+
+    /** Bar `i` of the wave: low to high and back, each bar [WAVE_STAGGER_MS] after the one before. */
+    fun wave(i: Int, elapsedMs: Long): Float {
+        val t = elapsedMs - WAVE_STAGGER_MS * i
+        if (t < 0) return WAVE_LOW
+        val phase = (t % (2 * WAVE_HALF_MS)).toFloat() / WAVE_HALF_MS
+        return lerp(WAVE_LOW, WAVE_HIGH, ease(if (phase <= 1f) phase else 2f - phase))
+    }
+
+    /** A bar settling from its own height to the wave's low over the stop's first [SETTLE_MS]. */
+    fun settled(level: Float, settle: Float): Float = lerp(barHeight(level), WAVE_LOW, settle)
+
+    /** The language's chip, or nothing when there is no language to show. */
+    fun chip(language: String?): String? = language?.take(2)?.takeIf { it.isNotEmpty() }?.uppercase()
+
+    /**
+     * The pill in points on `canvas`, which the caller has scaled to points. `gradient` and `edge`
+     * are the core's two layers; `settle` is 0 while recording and rises to 1 after the stop, and
+     * `waveMs` is the time since the stop less [SETTLE_MS]. `label` is the clock, or `n/total`.
+     */
+    fun draw(
+        canvas: Canvas,
+        levels: List<Float>,
+        phase: Dictation.Phase,
+        settle: Float,
+        waveMs: Long,
+        label: String,
+        language: String?,
+        gradient: Bitmap?,
+        edge: Bitmap?,
+    ) {
+        val pill = RectF(0f, 0f, WIDTH, HEIGHT)
+        gradient?.let { canvas.drawBitmap(it, null, pill, null) }
+        edge?.let { canvas.drawBitmap(it, null, pill, null) }
+
+        val mid = HEIGHT / 2f
+        val transcribing = phase == Dictation.Phase.Transcribing
+
+        // The red dot, its white ring over the gradient; it fades as the bars settle.
+        val dotAlpha = if (transcribing) 1f - settle else 1f
+        if (dotAlpha > 0f) {
+            val cx = PAD + DOT / 2f
+            paint.color = Color.WHITE
+            paint.alpha = (255 * dotAlpha).roundToInt()
+            canvas.drawCircle(cx, mid, DOT / 2f + RING, paint)
+            paint.color = RED
+            canvas.drawCircle(cx, mid, DOT / 2f, paint)
+        }
+
+        // The bars: the levels while recording, the wave after the stop.
+        paint.color = Color.WHITE
+        paint.alpha = (255 * if (transcribing) WAVE_ALPHA else 1f).roundToInt()
+        for (i in 0 until BARS) {
+            val level = levels.getOrElse(i) { 0f }
+            val h = when {
+                !transcribing -> barHeight(level)
+                settle < 1f -> settled(level, settle)
+                else -> wave(i, waveMs)
+            }
+            val x = BARS_X + i * BAR_STEP
+            canvas.drawRoundRect(x, mid - h / 2f, x + BAR_WIDTH, mid + h / 2f, BAR_WIDTH / 2f, BAR_WIDTH / 2f, paint)
+        }
+
+        // The clock, dimmed while transcribing.
+        paint.typeface = Typeface.MONOSPACE
+        paint.textSize = 13f
+        paint.isAntiAlias = true
+        paint.color = Color.WHITE
+        paint.alpha = (255 * if (transcribing) DIM else 1f).roundToInt()
+        val width = paint.measureText(label)
+        canvas.drawText(label, TIME_X, mid + 4.5f, paint)
+
+        // The language's chip after it, white with the icon's violet.
+        val code = chip(language)
+        if (code != null) {
+            val left = TIME_X + width + CHIP_GAP + 6f
+            paint.alpha = 255
+            paint.color = Color.WHITE
+            canvas.drawRoundRect(left, mid - CHIP_H / 2f, left + CHIP_W, mid + CHIP_H / 2f, 4f, 4f, paint)
+            paint.color = CHIP_TEXT
+            paint.textSize = 11f
+            paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            val codeWidth = paint.measureText(code)
+            canvas.drawText(code, left + (CHIP_W - codeWidth) / 2f, mid + 4f, paint)
+        }
+        paint.typeface = Typeface.DEFAULT
+        paint.isAntiAlias = false
+    }
+
+    /** The one paint the draw uses; both surfaces draw on the main thread. Lazy so the pure
+     * helpers above stay testable on a machine with no Android behind them. */
+    private val paint by lazy { Paint() }
+
+    /**
+     * The core's RGBA rows as a bitmap. The rows are `w * scale` by `h * scale`; the buffer is kept
+     * between frames so a recording does not allocate one every thirty-third of a second.
+     */
+    fun bitmap(bytes: ByteArray, w: Float, h: Float, scale: Float): Bitmap {
+        val cols = ceil(w * scale).toInt()
+        val rows = ceil(h * scale).toInt()
+        val pixels = IntArray(cols * rows)
+        for (i in pixels.indices) {
+            val at = i * 4
+            pixels[i] = ((bytes[at + 3].toInt() and 0xFF) shl 24) or
+                ((bytes[at].toInt() and 0xFF) shl 16) or
+                ((bytes[at + 1].toInt() and 0xFF) shl 8) or
+                (bytes[at + 2].toInt() and 0xFF)
+        }
+        return Bitmap.createBitmap(pixels, cols, rows, Bitmap.Config.ARGB_8888)
+    }
 }

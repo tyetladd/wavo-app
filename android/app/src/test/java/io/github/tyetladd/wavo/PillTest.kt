@@ -4,6 +4,7 @@ package io.github.tyetladd.wavo
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import kotlin.math.abs
@@ -87,5 +88,44 @@ class PillTest {
         assertTrue(Pill.animates(Dictation.Phase.Recording, animate = true))
         assertTrue(Pill.animates(Dictation.Phase.Transcribing, animate = true))
         assertFalse(Pill.animates(Dictation.Phase.Idle, animate = true))
+    }
+
+    @Test
+    fun a_bar_waits_its_stagger_before_it_waves() {
+        assertEquals(Pill.WAVE_LOW, Pill.wave(0, 0), 1e-4f)
+        assertEquals(Pill.WAVE_LOW, Pill.wave(1, 0), 1e-4f)
+        assertEquals(Pill.WAVE_LOW, Pill.wave(15, 75 * 14), 1e-4f)
+    }
+
+    @Test
+    fun the_wave_stays_between_its_low_and_high() {
+        for (i in 0 until Pill.BARS) {
+            for (ms in 0L..2400L step 17) {
+                val h = Pill.wave(i, ms)
+                assertTrue("bar $i at $ms gave $h", h >= Pill.WAVE_LOW - 1e-4f && h <= Pill.WAVE_HIGH + 1e-4f)
+            }
+        }
+    }
+
+    @Test
+    fun the_stagger_puts_neighbouring_bars_at_different_heights() {
+        // Bar 0 peaks at half a period; bar 1 is 75 ms behind it.
+        assertEquals(Pill.WAVE_HIGH, Pill.wave(0, 600), 1e-3f)
+        assertTrue(Pill.wave(1, 600) < Pill.wave(0, 600))
+    }
+
+    @Test
+    fun settling_ends_every_bar_at_the_wave_low() {
+        assertEquals(Pill.WAVE_LOW, Pill.settled(1f, 1f), 1e-4f)
+        assertEquals(Pill.WAVE_LOW, Pill.settled(0.01f, 1f), 1e-4f)
+        // Not settled at all: the bar is still the level's own height.
+        assertEquals(Pill.barHeight(1f), Pill.settled(1f, 0f), 1e-4f)
+    }
+
+    @Test
+    fun the_chip_is_the_language_in_capitals_or_nothing() {
+        assertNull(Pill.chip(null))
+        assertEquals("RU", Pill.chip("ru"))
+        assertEquals("EN", Pill.chip("en"))
     }
 }
