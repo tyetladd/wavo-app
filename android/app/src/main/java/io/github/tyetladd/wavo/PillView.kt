@@ -24,11 +24,11 @@ class PillView(context: Context) : View(context) {
     private var field: Bitmap? = null
     private var rim: Bitmap? = null
     private var levels: List<Float> = Pill.empty()
+    private var last = Dictation.Ui()
     private var phase = Dictation.Phase.Idle
     private var language: String? = null
     private var label = "0:00"
     private var phaseStart = 0L
-    private var flowStart = 0L
     private var recorded = 0L
     private var running = false
 
@@ -37,7 +37,7 @@ class PillView(context: Context) : View(context) {
             if (!running) return
             val density = resources.displayMetrics.density
             field = fieldLayer.update(
-                Native.gradient(pillWidth, Pill.HEIGHT, density, SystemClock.elapsedRealtime() - flowStart, false),
+                Native.gradient(pillWidth, Pill.HEIGHT, density, last.elapsed(SystemClock.elapsedRealtime()), false),
                 pillWidth, Pill.HEIGHT, density,
             )
             invalidate()
@@ -49,12 +49,11 @@ class PillView(context: Context) : View(context) {
     fun render(ui: Dictation.Ui, language: String?) {
         val now = SystemClock.elapsedRealtime()
         if (ui.phase != phase) {
-            // The flow carries on across the stop; only a new dictation starts it somewhere new.
-            if (ui.phase == Dictation.Phase.Recording) flowStart = now
-            if (ui.phase == Dictation.Phase.Transcribing) recorded = now - ui.startedAt
+            if (ui.phase == Dictation.Phase.Transcribing) recorded = ui.elapsed(now)
             phaseStart = now
             phase = ui.phase
         }
+        last = ui
         levels = ui.levels
         this.language = language
         pillWidth = Pill.width(language)
@@ -62,7 +61,7 @@ class PillView(context: Context) : View(context) {
             ui.phase == Dictation.Phase.Transcribing && ui.pieces > 1 ->
                 "${ui.piecesDone.coerceAtMost(ui.pieces)}/${ui.pieces}"
             ui.phase == Dictation.Phase.Transcribing -> clock(recorded)
-            else -> clock(now - ui.startedAt)
+            else -> clock(ui.elapsed(now))
         }
 
         val animates = Pill.animates(ui.phase, App.instance.settings.animate)

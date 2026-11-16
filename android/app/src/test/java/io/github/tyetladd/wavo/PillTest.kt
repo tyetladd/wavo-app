@@ -157,6 +157,19 @@ class PillTest {
     }
 
     @Test
+    fun the_clock_stops_while_paused_and_the_gap_is_not_counted() {
+        val recording = Dictation.Ui(phase = Dictation.Phase.Recording, startedAt = 1000)
+        assertEquals(5000L, recording.elapsed(6000))
+
+        val paused = recording.copy(phase = Dictation.Phase.Paused, pausedAt = 6000)
+        assertEquals("frozen at the moment of the pause", 5000L, paused.elapsed(9000))
+
+        val resumed = paused.copy(phase = Dictation.Phase.Recording, pausedMs = 3000, pausedAt = 0)
+        assertEquals("the paused gap is not recording time", 5000L, resumed.elapsed(9000))
+        assertEquals("and it goes on from there", 6000L, resumed.elapsed(10000))
+    }
+
+    @Test
     fun a_language_widens_the_pill_for_its_chip() {
         assertEquals(Pill.WIDTH, Pill.width(null), 0f)
         assertEquals(Pill.WIDTH + Pill.CHIP_ROOM, Pill.width("ru"), 0f)

@@ -276,7 +276,7 @@ private fun DictateScreen(dictation: Dictation, toModels: () -> Unit) {
         }
 
         val status = when {
-            recording -> "Listening  ${clock(now - ui.startedAt)}"
+            recording -> "Listening  ${clock(ui.elapsed(now))}"
             paused -> "Paused — the same dictation goes on when you resume"
             ui.phase == Dictation.Phase.Transcribing ->
                 (engine as? Engine.State.Loading)?.let { "Loading ${it.model}…" }
@@ -309,16 +309,12 @@ private fun DictateScreen(dictation: Dictation, toModels: () -> Unit) {
         var field by remember { mutableStateOf<Bitmap?>(null) }
         var rim by remember { mutableStateOf<Bitmap?>(null) }
         var phaseStart by remember { mutableLongStateOf(SystemClock.elapsedRealtime()) }
-        var flowStart by remember { mutableLongStateOf(SystemClock.elapsedRealtime()) }
         var recorded by remember { mutableLongStateOf(0L) }
         var tick by remember { mutableLongStateOf(SystemClock.elapsedRealtime()) }
 
         LaunchedEffect(ui.phase) {
             val now = SystemClock.elapsedRealtime()
-            // The flow carries on across the stop, as the desktop's does: only a new dictation
-            // starts it somewhere new.
-            if (ui.phase == Dictation.Phase.Recording) flowStart = now
-            if (ui.phase == Dictation.Phase.Transcribing) recorded = now - ui.startedAt
+            if (ui.phase == Dictation.Phase.Transcribing) recorded = ui.elapsed(now)
             phaseStart = now
         }
         LaunchedEffect(animating, pillWidth) {
@@ -337,8 +333,10 @@ private fun DictateScreen(dictation: Dictation, toModels: () -> Unit) {
             )
             while (true) {
                 tick = SystemClock.elapsedRealtime()
+                // The flow follows the recording's own clock, so it freezes with a pause and
+                // carries on across the stop, as the desktop's does.
                 field = fieldLayer.update(
-                    Native.gradient(pillWidth, Pill.HEIGHT, density, tick - flowStart, false),
+                    Native.gradient(pillWidth, Pill.HEIGHT, density, ui.elapsed(tick), false),
                     pillWidth, Pill.HEIGHT, density,
                 )
                 delay(33)
@@ -352,7 +350,7 @@ private fun DictateScreen(dictation: Dictation, toModels: () -> Unit) {
             val label = when {
                 transcribing && ui.pieces > 1 -> "${ui.piecesDone.coerceAtMost(ui.pieces)}/${ui.pieces}"
                 transcribing -> clock(recorded)
-                else -> clock(tick - ui.startedAt)
+                else -> clock(ui.elapsed(tick))
             }
             Canvas(Modifier.width(pillWidth.dp).height(Pill.HEIGHT.dp)) {
                 drawIntoCanvas {
@@ -399,10 +397,19 @@ private fun DictateScreen(dictation: Dictation, toModels: () -> Unit) {
                         modifier = Modifier.size(36.dp),
                     )
                 }
-                // Pause keeps the dictation open: resuming goes on into the same record.
+                // Pause keeps the dictation open: resuming goes on into the same record. The same
+                // size as the stop beside it, so the two read as one pair of controls.
                 if (ending) {
-                    OutlinedButton(onClick = { if (paused) dictation.resume() else dictation.pause() }) {
-                        Text(if (paused) "Resume" else "Pause")
+                    LargeFloatingActionButton(
+                        onClick = { if (paused) dictation.resume() else dictation.pause() },
+                        containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                        contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                    ) {
+                        Icon(
+                            painterResource(if (paused) R.drawable.ic_play else R.drawable.ic_pause),
+                            contentDescription = if (paused) "Resume" else "Pause",
+                            modifier = Modifier.size(36.dp),
+                        )
                     }
                 }
             }

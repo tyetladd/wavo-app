@@ -45,7 +45,14 @@ class Dictation(
         /** The pieces sent to the engine, and those back: the pill's `n/total` while transcribing. */
         val pieces: Int = 0,
         val piecesDone: Int = 0,
-    )
+        /** Time spent paused, and when the pause under way began: the clock stops with the mic. */
+        val pausedMs: Long = 0,
+        val pausedAt: Long = 0,
+    ) {
+        /** How long the recording has been going, without the time spent paused. */
+        fun elapsed(now: Long): Long =
+            (if (phase == Phase.Paused) pausedAt else now) - startedAt - pausedMs
+    }
 
     val ui = MutableStateFlow(Ui())
 
@@ -209,7 +216,7 @@ class Dictation(
                 submit(piece, pieces.start)
             }
         }
-        ui.update { it.copy(phase = Phase.Paused, level = 0f) }
+        ui.update { it.copy(phase = Phase.Paused, level = 0f, pausedAt = SystemClock.elapsedRealtime()) }
     }
 
     /** Goes on after [pause]; `false` with [Ui.error] set when the microphone can't be reopened. */
@@ -219,7 +226,14 @@ class Dictation(
             ui.update { it.copy(error = "The microphone is busy or can't be opened") }
             return false
         }
-        ui.update { it.copy(phase = Phase.Recording) }
+        ui.update {
+            val now = SystemClock.elapsedRealtime()
+            it.copy(
+                phase = Phase.Recording,
+                pausedMs = it.pausedMs + (now - it.pausedAt),
+                pausedAt = 0L,
+            )
+        }
         return true
     }
 
