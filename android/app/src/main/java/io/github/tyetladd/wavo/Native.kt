@@ -36,4 +36,11 @@ object Native {
     @JvmStatic external fun transcribe(handle: Long, pcm: FloatArray, language: String?, clean: Boolean): String
 
     @JvmStatic external fun free(handle: Long)
+
+    /**
+     * The HUD pill's pixels: straight RGBA rows, `w * scale` by `h * scale`, the colours at `ms`
+     * into their flow, or the rim over them with [edge]. The desktop's own gradient, so the phone's
+     * pill is the same picture. Called on the UI thread while a dictation shows; it is pure maths.
+     */
+    @JvmStatic external fun gradient(w: Float, h: Float, scale: Float, ms: Long, edge: Boolean): ByteArray
 }

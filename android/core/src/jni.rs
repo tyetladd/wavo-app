@@ -10,9 +10,10 @@ use std::time::{Duration, Instant};
 
 use jni::JNIEnv;
 use jni::objects::{JClass, JFloatArray, JObject, JString, JValue};
-use jni::sys::{jlong, jstring};
+use jni::sys::{JNI_FALSE, jboolean, jbyteArray, jfloat, jlong, jstring};
 
 use crate::engine::{self, Engine, Result};
+use crate::gradient;
 
 /// Runs `f`; on an error or a panic throws it to Kotlin and returns `fallback`.
 fn guard<T>(env: &mut JNIEnv, fallback: T, f: impl FnOnce(&mut JNIEnv) -> Result<T>) -> T {
@@ -217,6 +218,35 @@ pub extern "system" fn Java_io_github_tyetladd_wavo_Native_transcribe<'l>(
     let heard = engine(handle)?.transcribe(&samples, language.as_deref(), clean != 0)?;
     let heard = json(&heard)?;
     java(env, heard)
+  })
+}
+
+/// `gradient(w, h, scale, ms, edge): ByteArray`: the pill's colours at `ms` into its flow, or its
+/// rim with `edge`, as straight RGBA rows a pixel per pixel at `scale`. The desktop HUD's own
+/// pixels, so the phone's pill is the same picture and neither side paints the gradient again.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_io_github_tyetladd_wavo_Native_gradient<'l>(
+  mut env: JNIEnv<'l>,
+  _: JClass<'l>,
+  w: jfloat,
+  h: jfloat,
+  scale: jfloat,
+  ms: jlong,
+  edge: jboolean,
+) -> jbyteArray {
+  guard(&mut env, std::ptr::null_mut(), |env| {
+    let size = gradient::Size { w, h };
+    let (_, _, px) = if edge != JNI_FALSE {
+      gradient::edge(size, scale)
+    } else {
+      gradient::field(size, Duration::from_millis(ms.max(0) as u64), scale)
+    };
+
+    let out = env.new_byte_array(px.len() as i32).map_err(|e| e.to_string())?;
+    // SAFETY: i8 and u8 have the same layout, and JNI takes its bytes signed; `out` is `px` long.
+    let signed = unsafe { std::slice::from_raw_parts(px.as_ptr() as *const i8, px.len()) };
+    env.set_byte_array_region(&out, 0, signed).map_err(|e| e.to_string())?;
+    Ok(out.into_raw())
   })
 }
 

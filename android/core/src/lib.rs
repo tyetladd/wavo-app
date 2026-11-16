@@ -13,8 +13,13 @@ mod cleanup;
 #[allow(dead_code)]
 #[path = "../../../src/numbers.rs"]
 mod numbers;
+#[allow(dead_code)]
+#[path = "../../../src/gradient.rs"]
+mod gradient;
 
 mod cores;
 pub mod engine;
+#[cfg(test)]
+mod gradient_test;
 mod jni;
 mod store;
