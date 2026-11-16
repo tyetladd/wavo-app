@@ -42,6 +42,9 @@ class Dictation(
         val partial: String = "",
         /** A conversation is recorded, or its speakers are being told apart. */
         val conversation: Boolean = false,
+        /** The pieces sent to the engine, and those back: the pill's `n/total` while transcribing. */
+        val pieces: Int = 0,
+        val piecesDone: Int = 0,
     )
 
     val ui = MutableStateFlow(Ui())
@@ -134,10 +137,12 @@ class Dictation(
         val mine = session
         val startMs = start * 1000L / Recorder.RATE
         pending++
+        ui.update { it.copy(pieces = it.pieces + 1) }
         Engine.transcribe(pcm, clean = if (conversation) false else null) { result ->
             if (mine != session) return@transcribe
 
             pending--
+            ui.update { it.copy(piecesDone = it.piecesDone + 1) }
             result.onFailure { failure = it.message ?: "The engine failed" }
             result.onSuccess { heard ->
                 sample = sample ?: heard
@@ -240,6 +245,9 @@ class Dictation(
      */
     private fun keep(heard: Heard) {
         val pcm = audio
+        // The recording is up to 38 MB at the limit: let it go once it is captured, not at the
+        // next start, and there are two Dictations — the screen's and the keyboard's.
+        audio = null
         val history = App.instance.history
         if (pcm == null || !App.instance.settings.keepRecordings) {
             history.add(heard)
@@ -260,6 +268,7 @@ class Dictation(
         if (ui.value.phase == Phase.Idle) return
 
         if (ui.value.phase == Phase.Recording) recorder.stop()
+        audio = null
         session++
         ui.update { Ui(last = it.last) }
     }

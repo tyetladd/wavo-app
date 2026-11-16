@@ -34,6 +34,8 @@ object Pill {
     const val CHIP_W = 24f
     const val CHIP_H = 17f
     const val CHIP_GAP = 2f
+    /** The room the pill widens by for a language's chip, as the desktop's does. */
+    const val CHIP_ROOM = CHIP_W + CHIP_GAP
 
     /** Where the bars start, and the clock after them. */
     const val BARS_X = PAD + DOT + 10f
@@ -87,6 +89,19 @@ object Pill {
     /** The language's chip, or nothing when there is no language to show. */
     fun chip(language: String?): String? = language?.take(2)?.takeIf { it.isNotEmpty() }?.uppercase()
 
+    /** The pill's width: wider by the chip's room when a language shows, so the chip is inside it. */
+    fun width(language: String?): Float = WIDTH + if (chip(language) != null) CHIP_ROOM else 0f
+
+    /**
+     * The grid the core's bytes are: columns ceil, but rows are taken from the payload, because the
+     * generator ROUNDS rows where it ceils columns. Deriving them here means the two can never
+     * disagree at a density where `h * scale` is not a half — which would index past the bytes.
+     */
+    fun grid(w: Float, h: Float, scale: Float, bytes: Int): Pair<Int, Int> {
+        val cols = ceil(w * scale).toInt()
+        return cols to if (cols > 0) bytes / (cols * 4) else 0
+    }
+
     /**
      * The pill in points on `canvas`, which the caller has scaled to points. `gradient` and `edge`
      * are the core's two layers; `settle` is 0 while recording and rises to 1 after the stop, and
@@ -103,7 +118,8 @@ object Pill {
         gradient: Bitmap?,
         edge: Bitmap?,
     ) {
-        val pill = RectF(0f, 0f, WIDTH, HEIGHT)
+        val w = width(language)
+        val pill = RectF(0f, 0f, w, HEIGHT)
         gradient?.let { canvas.drawBitmap(it, null, pill, null) }
         edge?.let { canvas.drawBitmap(it, null, pill, null) }
 
@@ -141,13 +157,13 @@ object Pill {
         paint.isAntiAlias = true
         paint.color = Color.WHITE
         paint.alpha = (255 * if (transcribing) DIM else 1f).roundToInt()
-        val width = paint.measureText(label)
+        val clockWidth = paint.measureText(label)
         canvas.drawText(label, TIME_X, mid + 4.5f, paint)
 
-        // The language's chip after it, white with the icon's violet.
+        // The language's chip at the far right, inside the widened pill, as the desktop's is.
         val code = chip(language)
         if (code != null) {
-            val left = TIME_X + width + CHIP_GAP + 6f
+            val left = w - PAD - CHIP_W
             paint.alpha = 255
             paint.color = Color.WHITE
             canvas.drawRoundRect(left, mid - CHIP_H / 2f, left + CHIP_W, mid + CHIP_H / 2f, 4f, 4f, paint)
@@ -166,20 +182,29 @@ object Pill {
     private val paint by lazy { Paint() }
 
     /**
-     * The core's RGBA rows as a bitmap. The rows are `w * scale` by `h * scale`; the buffer is kept
-     * between frames so a recording does not allocate one every thirty-third of a second.
+     * One of the pill's two layers, its buffers kept between frames: a recording redraws thirty
+     * times a second, and a fresh array and bitmap each time is megabytes of churn on the UI
+     * thread. One layer per surface; both draw on the main thread.
      */
-    fun bitmap(bytes: ByteArray, w: Float, h: Float, scale: Float): Bitmap {
-        val cols = ceil(w * scale).toInt()
-        val rows = ceil(h * scale).toInt()
-        val pixels = IntArray(cols * rows)
-        for (i in pixels.indices) {
-            val at = i * 4
-            pixels[i] = ((bytes[at + 3].toInt() and 0xFF) shl 24) or
-                ((bytes[at].toInt() and 0xFF) shl 16) or
-                ((bytes[at + 1].toInt() and 0xFF) shl 8) or
-                (bytes[at + 2].toInt() and 0xFF)
+    class Layer {
+        private var pixels = IntArray(0)
+        private var bitmap: Bitmap? = null
+
+        /** The core's RGBA rows as a bitmap, reusing this layer's array and bitmap when they fit. */
+        fun update(bytes: ByteArray, w: Float, h: Float, scale: Float): Bitmap {
+            val (cols, rows) = grid(w, h, scale, bytes.size)
+            if (pixels.size != cols * rows) pixels = IntArray(cols * rows)
+            for (i in 0 until cols * rows) {
+                val at = i * 4
+                pixels[i] = ((bytes[at + 3].toInt() and 0xFF) shl 24) or
+                    ((bytes[at].toInt() and 0xFF) shl 16) or
+                    ((bytes[at + 1].toInt() and 0xFF) shl 8) or
+                    (bytes[at + 2].toInt() and 0xFF)
+            }
+            val bmp = bitmap?.takeIf { it.width == cols && it.height == rows }
+                ?: Bitmap.createBitmap(cols, rows, Bitmap.Config.ARGB_8888).also { bitmap = it }
+            bmp.setPixels(pixels, 0, cols, 0, 0, cols, rows)
+            return bmp
         }
-        return Bitmap.createBitmap(pixels, cols, rows, Bitmap.Config.ARGB_8888)
     }
 }

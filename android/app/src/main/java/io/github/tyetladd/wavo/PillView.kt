@@ -18,6 +18,9 @@ import android.view.View
  */
 class PillView(context: Context) : View(context) {
     private val main = Handler(Looper.getMainLooper())
+    private val fieldLayer = Pill.Layer()
+    private val rimLayer = Pill.Layer()
+    private var pillWidth = Pill.WIDTH
     private var field: Bitmap? = null
     private var rim: Bitmap? = null
     private var levels: List<Float> = Pill.empty()
@@ -33,9 +36,9 @@ class PillView(context: Context) : View(context) {
         override fun run() {
             if (!running) return
             val density = resources.displayMetrics.density
-            field = Pill.bitmap(
-                Native.gradient(Pill.WIDTH, Pill.HEIGHT, density, SystemClock.elapsedRealtime() - flowStart, false),
-                Pill.WIDTH, Pill.HEIGHT, density,
+            field = fieldLayer.update(
+                Native.gradient(pillWidth, Pill.HEIGHT, density, SystemClock.elapsedRealtime() - flowStart, false),
+                pillWidth, Pill.HEIGHT, density,
             )
             invalidate()
             main.postDelayed(this, 33)
@@ -54,7 +57,13 @@ class PillView(context: Context) : View(context) {
         }
         levels = ui.levels
         this.language = language
-        label = clock(if (ui.phase == Dictation.Phase.Transcribing) recorded else now - ui.startedAt)
+        pillWidth = Pill.width(language)
+        label = when {
+            ui.phase == Dictation.Phase.Transcribing && ui.pieces > 1 ->
+                "${ui.piecesDone.coerceAtMost(ui.pieces)}/${ui.pieces}"
+            ui.phase == Dictation.Phase.Transcribing -> clock(recorded)
+            else -> clock(now - ui.startedAt)
+        }
 
         val animates = Pill.animates(ui.phase, App.instance.settings.animate)
         visibility = if (animates) VISIBLE else GONE
@@ -63,9 +72,9 @@ class PillView(context: Context) : View(context) {
                 running = true
                 val density = resources.displayMetrics.density
                 // The rim does not move: made once, and only the colours are made again.
-                rim = Pill.bitmap(
-                    Native.gradient(Pill.WIDTH, Pill.HEIGHT, density, 0L, true),
-                    Pill.WIDTH, Pill.HEIGHT, density,
+                rim = rimLayer.update(
+                    Native.gradient(pillWidth, Pill.HEIGHT, density, 0L, true),
+                    pillWidth, Pill.HEIGHT, density,
                 )
                 main.post(tick)
             }
@@ -82,7 +91,7 @@ class PillView(context: Context) : View(context) {
 
     override fun onMeasure(widthSpec: Int, heightSpec: Int) {
         val density = resources.displayMetrics.density
-        setMeasuredDimension((Pill.WIDTH * density).toInt(), (Pill.HEIGHT * density).toInt())
+        setMeasuredDimension((pillWidth * density).toInt(), (Pill.HEIGHT * density).toInt())
     }
 
     override fun onDraw(canvas: Canvas) {

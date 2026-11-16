@@ -96,8 +96,11 @@ class App : Application() {
             settings.gpuCrashed = true
         }
         Speakers.refresh()
-        // A crash between a recording and its row: tidied off the main thread, before anything shows.
-        kotlin.concurrent.thread(name = "wavo-reconcile") { history.reconcile() }
+        // A crash between a recording and its row: tidied off the main thread, before anything
+        // shows. Nothing written since this start is an orphan, and a failure here must not take
+        // the process with it.
+        val started = System.currentTimeMillis()
+        kotlin.concurrent.thread(name = "wavo-reconcile") { runCatching { history.reconcile(started) } }
         // What the first builds' downloader left: nothing reads it now.
         File(filesDir, "hub").deleteRecursively()
     }

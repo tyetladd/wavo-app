@@ -66,10 +66,14 @@ class Recordings(private val root: File) {
         if (file.delete()) file.parentFile?.takeIf { it.list()?.isEmpty() == true }?.delete()
     }
 
-    /** The recordings no history row points at: what a crash between the file and the row left. */
-    fun orphans(known: Set<String>): List<String> =
+    /**
+     * The recordings no history row points at: what a crash between the file and the row left.
+     * `olderThan` spares a file written since this process started — a dictation completing now
+     * has its file before its row, and is not an orphan.
+     */
+    fun orphans(known: Set<String>, olderThan: Long = Long.MAX_VALUE): List<String> =
         root.walkTopDown()
-            .filter { it.isFile && it.extension == "wav" }
+            .filter { it.isFile && it.extension == "wav" && it.lastModified() < olderThan }
             .map { it.relativeTo(root).path }
             .filter { it !in known }
             .sorted()

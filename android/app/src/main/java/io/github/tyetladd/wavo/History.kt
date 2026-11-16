@@ -90,9 +90,9 @@ class History(context: Context) : SQLiteOpenHelper(context, "history.db", null, 
      * row left it, and the dictation it came from produced no text to link it to — and a row whose
      * recording is gone keeps its text and loses the reference.
      */
-    fun reconcile() {
+    fun reconcile(since: Long = Long.MAX_VALUE) {
         val rows = all()
-        recordings.orphans(rows.mapNotNull { it.audio }.toSet()).forEach { recordings.delete(it) }
+        recordings.orphans(rows.mapNotNull { it.audio }.toSet(), since).forEach { recordings.delete(it) }
         val gone = recordings.dangling(rows)
         if (gone.isNotEmpty()) {
             gone.forEach { writableDatabase.execSQL("UPDATE history SET audio = NULL WHERE id = ?", arrayOf(it)) }

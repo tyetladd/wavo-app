@@ -281,6 +281,10 @@ private fun DictateScreen(dictation: Dictation, toModels: () -> Unit) {
         // refreshed at the desktop's own thirty-third of a second.
         val animating = Pill.animates(ui.phase, App.instance.settings.animate)
         val density = LocalDensity.current.density
+        val language = App.instance.settings.language ?: ui.last?.language
+        val pillWidth = Pill.width(language)
+        val fieldLayer = remember { Pill.Layer() }
+        val rimLayer = remember { Pill.Layer() }
         var field by remember { mutableStateOf<Bitmap?>(null) }
         var rim by remember { mutableStateOf<Bitmap?>(null) }
         var phaseStart by remember { mutableLongStateOf(SystemClock.elapsedRealtime()) }
@@ -296,22 +300,22 @@ private fun DictateScreen(dictation: Dictation, toModels: () -> Unit) {
             if (ui.phase == Dictation.Phase.Transcribing) recorded = now - ui.startedAt
             phaseStart = now
         }
-        LaunchedEffect(animating) {
+        LaunchedEffect(animating, pillWidth) {
             if (!animating) {
                 field = null
                 rim = null
                 return@LaunchedEffect
             }
             // The rim does not move: it is made once, and only the colours are made again.
-            rim = Pill.bitmap(
-                Native.gradient(Pill.WIDTH, Pill.HEIGHT, density, 0L, true),
-                Pill.WIDTH, Pill.HEIGHT, density,
+            rim = rimLayer.update(
+                Native.gradient(pillWidth, Pill.HEIGHT, density, 0L, true),
+                pillWidth, Pill.HEIGHT, density,
             )
             while (true) {
                 tick = SystemClock.elapsedRealtime()
-                field = Pill.bitmap(
-                    Native.gradient(Pill.WIDTH, Pill.HEIGHT, density, tick - flowStart, false),
-                    Pill.WIDTH, Pill.HEIGHT, density,
+                field = fieldLayer.update(
+                    Native.gradient(pillWidth, Pill.HEIGHT, density, tick - flowStart, false),
+                    pillWidth, Pill.HEIGHT, density,
                 )
                 delay(33)
             }
@@ -321,9 +325,12 @@ private fun DictateScreen(dictation: Dictation, toModels: () -> Unit) {
             val transcribing = ui.phase == Dictation.Phase.Transcribing
             val settle =
                 if (transcribing) Pill.ease((elapsed.toFloat() / Pill.SETTLE_MS).coerceIn(0f, 1f)) else 0f
-            val label = clock(if (transcribing) recorded else tick - ui.startedAt)
-            val language = App.instance.settings.language ?: ui.last?.language
-            Canvas(Modifier.width(Pill.WIDTH.dp).height(Pill.HEIGHT.dp)) {
+            val label = when {
+                transcribing && ui.pieces > 1 -> "${ui.piecesDone.coerceAtMost(ui.pieces)}/${ui.pieces}"
+                transcribing -> clock(recorded)
+                else -> clock(tick - ui.startedAt)
+            }
+            Canvas(Modifier.width(pillWidth.dp).height(Pill.HEIGHT.dp)) {
                 drawIntoCanvas {
                     it.save()
                     it.scale(density, density)

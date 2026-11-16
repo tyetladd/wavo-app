@@ -8,6 +8,7 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import kotlin.math.abs
+import kotlin.math.ceil
 import kotlin.math.sqrt
 
 /** The pill's meter: the desktop's dB mapping, the ring of levels it draws, and the RMS it takes. */
@@ -127,5 +128,38 @@ class PillTest {
         assertNull(Pill.chip(null))
         assertEquals("RU", Pill.chip("ru"))
         assertEquals("EN", Pill.chip("en"))
+    }
+
+    @Test
+    fun the_grid_takes_its_rows_from_the_payload_not_from_ceil() {
+        // The generator ceils columns but ROUNDS rows. At a density where 36 * scale is not a
+        // half, ceil would ask for one row more than the bytes hold, and index past the end.
+        val scale = 3.2f
+        val cols = 564          // ceil(176 * 3.2)
+        val rows = 115          // round(36 * 3.2), NOT ceil -> 116
+        val (c, r) = Pill.grid(Pill.WIDTH, Pill.HEIGHT, scale, cols * rows * 4)
+        assertEquals(cols, c)
+        assertEquals(rows, r)
+        assertTrue("ceil would have overrun the payload", r != ceil(Pill.HEIGHT * scale).toInt())
+    }
+
+    @Test
+    fun the_grid_agrees_at_every_density_bucket() {
+        for (scale in floatArrayOf(1f, 1.3125f, 2f, 2.625f, 3f, 3.2f, 3.5f)) {
+            val cols = ceil(Pill.WIDTH * scale).toInt()
+            val rows = kotlin.math.round(Pill.HEIGHT * scale).toInt()
+            val (c, r) = Pill.grid(Pill.WIDTH, Pill.HEIGHT, scale, cols * rows * 4)
+            assertEquals("cols at $scale", cols, c)
+            assertEquals("rows at $scale", rows, r)
+        }
+    }
+
+    @Test
+    fun a_language_widens_the_pill_for_its_chip() {
+        assertEquals(Pill.WIDTH, Pill.width(null), 0f)
+        assertEquals(Pill.WIDTH + Pill.CHIP_ROOM, Pill.width("ru"), 0f)
+        // The chip sits inside the widened pill, a padding from its right edge.
+        val w = Pill.width("ru")
+        assertTrue(w - Pill.PAD - Pill.CHIP_W + Pill.CHIP_W <= w - Pill.PAD)
     }
 }
