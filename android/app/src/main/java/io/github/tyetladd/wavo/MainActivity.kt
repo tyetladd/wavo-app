@@ -40,8 +40,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
@@ -144,20 +144,32 @@ private fun Wavo(dictation: Dictation) {
     LaunchedEffect(Unit) { if (models.none { it.downloaded }) tab = Tab.Models }
 
     Scaffold(
-        topBar = { TopAppBar(title = { Text(if (tab == Tab.Dictate) "Wavo" else tab.label) }) },
+        topBar = {
+            TopAppBar(
+                title = { Text(if (tab == Tab.Dictate) "Wavo" else tab.label) },
+                navigationIcon = {
+                    // Models lives under Settings now, so it is a screen you come back from.
+                    if (tab == Tab.Models) {
+                        IconButton(onClick = { tab = Tab.Settings }) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back to Settings")
+                        }
+                    }
+                },
+            )
+        },
         bottomBar = {
             NavigationBar {
-                Tab.entries.forEach { t ->
+                Tab.entries.filter { it != Tab.Models }.forEach { t ->
                     NavigationBarItem(
-                        selected = tab == t,
+                        // Settings stays lit while Models is open: that is where it came from.
+                        selected = tab == t || (t == Tab.Settings && tab == Tab.Models),
                         onClick = { tab = t },
                         label = { Text(t.label) },
                         icon = {
                             when (t) {
                                 Tab.Dictate -> Icon(painterResource(R.drawable.ic_mic), null)
-                                Tab.Models -> Icon(Icons.Filled.List, null)
                                 Tab.History -> Icon(Icons.Filled.Menu, null)
-                                Tab.Settings -> Icon(Icons.Filled.Settings, null)
+                                else -> Icon(Icons.Filled.Settings, null)
                             }
                         },
                     )
@@ -170,7 +182,7 @@ private fun Wavo(dictation: Dictation) {
                 Tab.Dictate -> DictateScreen(dictation, toModels = { tab = Tab.Models })
                 Tab.Models -> ModelsScreen()
                 Tab.History -> HistoryScreen()
-                Tab.Settings -> SettingsScreen()
+                Tab.Settings -> SettingsScreen(onModels = { tab = Tab.Models })
             }
         }
     }
@@ -226,7 +238,14 @@ private fun DictateScreen(dictation: Dictation, toModels: () -> Unit) {
         Modifier.fillMaxSize().padding(horizontal = 20.dp, vertical = 12.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState())) {
+        val scroll = rememberScrollState()
+        // The words keep coming while the person speaks: follow them to the end, so the newest are
+        // on screen rather than the first lines of a long dictation. Only while recording — a
+        // finished text is left where the person scrolled it.
+        LaunchedEffect(ui.partial, ui.phase) {
+            if (ui.phase == Dictation.Phase.Recording) scroll.animateScrollTo(scroll.maxValue)
+        }
+        Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(scroll)) {
             val last = ui.last
             if (ui.phase != Dictation.Phase.Idle && ui.partial.isNotEmpty()) {
                 // The pieces ready while the person speaks on.
@@ -737,7 +756,7 @@ private fun HistoryScreen() {
 // MARK: Settings
 
 @Composable
-private fun SettingsScreen() {
+private fun SettingsScreen(onModels: () -> Unit) {
     val context = LocalContext.current
     val settings = App.instance.settings
     val engine by Engine.state.collectAsState()
@@ -820,6 +839,22 @@ private fun SettingsScreen() {
                 unloadAfter = it
                 settings.unloadAfterMinutes = it
             }
+        }
+
+        // Models is a screen of its own, reached from here rather than from the bar.
+        Row(
+            Modifier.fillMaxWidth().clickable(onClick = onModels).padding(vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text("Models")
+                Text(
+                    "Download, choose and delete the models that transcribe.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            OutlinedButton(onClick = onModels) { Text("Open") }
         }
 
         val speakers by Speakers.ready.collectAsState()
