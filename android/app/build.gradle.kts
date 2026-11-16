@@ -1,8 +1,8 @@
 import java.security.MessageDigest
+import java.util.Properties
 
 plugins {
     id("com.android.application")
-    id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
@@ -11,13 +11,13 @@ val abis = (findProperty("wavo.abis") as String? ?: "arm64-v8a").split(",")
 
 android {
     namespace = "io.github.tyetladd.wavo"
-    compileSdk = 35
-    ndkVersion = "27.2.12479018"
+    compileSdk = 37
+    ndkVersion = "26.1.10909125"
 
     defaultConfig {
         applicationId = "io.github.tyetladd.wavo"
         minSdk = 29
-        targetSdk = 35
+        targetSdk = 36
         versionCode = 8
         versionName = "0.4.1"
         ndk { abiFilters += abis }
@@ -53,12 +53,18 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
-    kotlinOptions { jvmTarget = "17" }
     buildFeatures { compose = true }
 
     // Of sherpa-onnx only its JNI library and ONNX Runtime are used.
     packaging {
         jniLibs.excludes += listOf("**/libsherpa-onnx-c-api.so", "**/libsherpa-onnx-cxx-api.so")
+    }
+}
+
+// AGP 9 compiles Kotlin itself, so the JVM target is set here, not in android.kotlinOptions.
+kotlin {
+    compilerOptions {
+        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
     }
 }
 
@@ -94,9 +100,17 @@ val sherpa = tasks.register("sherpaAar") {
 }
 
 // The engine: core/ built by cargo-ndk into jniLibs, before anything else.
+// AGP 9 dropped ndkDirectory, so the NDK is found under the SDK at ndk/<ndkVersion>.
+val sdkDir = System.getenv("ANDROID_HOME")
+    ?: System.getenv("ANDROID_SDK_ROOT")
+    ?: rootProject.file("local.properties").takeIf { it.exists() }?.let { props ->
+        Properties().apply { props.inputStream().use { load(it) } }.getProperty("sdk.dir")
+    }
+    ?: throw GradleException("No Android SDK: set ANDROID_HOME or write sdk.dir in android/local.properties")
+
 val cargoNdk = tasks.register<Exec>("cargoNdk") {
     workingDir = rootProject.file("core")
-    environment("ANDROID_NDK_HOME", android.ndkDirectory.path)
+    environment("ANDROID_NDK_HOME", File(sdkDir, "ndk/${android.ndkVersion}").path)
     commandLine(
         listOf("cargo", "ndk") + abis.flatMap { listOf("-t", it) } +
             listOf("--platform", "29", "-o", file("src/main/jniLibs").path, "build", "--release", "--locked"),
@@ -107,13 +121,13 @@ tasks.named("preBuild") { dependsOn(cargoNdk, sherpa) }
 
 dependencies {
     implementation(files(sherpaAar))
-    implementation(platform("androidx.compose:compose-bom:2025.06.01"))
-    implementation("androidx.compose.material3:material3")
-    implementation("androidx.compose.material:material-icons-core")
-    implementation("androidx.compose.ui:ui")
+    // Pinned as the sshmanager project pins them, so one copy of each serves both builds.
+    implementation("androidx.compose.ui:ui:1.9.3")
+    implementation("androidx.compose.material3:material3:1.4.0")
+    implementation("androidx.compose.material:material-icons-core:1.7.8")
     implementation("androidx.activity:activity-compose:1.10.1")
-    implementation("androidx.core:core-ktx:1.16.0")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
+    implementation("androidx.core:core-ktx:1.15.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
 
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.json:json:20250517")
