@@ -9,7 +9,7 @@ import android.media.MediaRecorder
 import android.os.Handler
 import android.os.Looper
 import kotlin.concurrent.thread
-import kotlin.math.abs
+import kotlin.math.sqrt
 
 /**
  * The microphone as the engine takes it: 16 kHz mono floats in [-1, 1]. A recording ends by
@@ -27,9 +27,10 @@ class Recorder {
     val recording: Boolean get() = running
 
     /**
-     * Starts recording; `false` when the microphone can't be opened. `level` gets the loudest
-     * sample of each tenth of a second, and `full` runs when the recording reaches its limit, both
-     * on the main thread. The caller has checked the permission.
+     * Starts recording; `false` when the microphone can't be opened. `level` gets the RMS of each
+     * thirtieth of a second — three to every tenth, the desktop meter's own window — and `full`
+     * runs when the recording reaches its limit, both on the main thread. The caller has checked
+     * the permission.
      */
     @SuppressLint("MissingPermission")
     fun start(level: (Float) -> Unit, full: () -> Unit): Boolean {
@@ -70,8 +71,14 @@ class Recorder {
                     samples += n
                     samples
                 }
-                val loudest = chunk.maxOf(::abs)
-                main.post { if (running) level(loudest) }
+                // Three levels to a chunk: the pill's meter ticks at the desktop's ~33 ms, a third
+                // of this read. The chunk itself stays whole, so Pieces keeps its own cadence.
+                val third = n / 3
+                for (part in 0..2) {
+                    val from = part * third
+                    val value = rms(chunk, from, if (part == 2) n else from + third)
+                    main.post { if (running) level(value) }
+                }
                 if (total >= RATE * MAX_SECONDS) {
                     main.post { if (running) full() }
                     break
@@ -124,4 +131,19 @@ class Recorder {
         private const val CHANNEL = AudioFormat.CHANNEL_IN_MONO
         private const val FORMAT = AudioFormat.ENCODING_PCM_FLOAT
     }
+}
+
+/**
+ * The root mean square of `pcm` from `from` to `until`, the level the desktop's meter takes: a
+ * peak sits several dB above it, and the pill's bars are calibrated for this. Nothing is 0.
+ */
+internal fun rms(pcm: FloatArray, from: Int, until: Int): Float {
+    val n = until - from
+    if (n <= 0) return 0f
+    var sum = 0.0
+    for (i in from until until) {
+        val s = pcm[i].toDouble()
+        sum += s * s
+    }
+    return sqrt(sum / n).toFloat()
 }

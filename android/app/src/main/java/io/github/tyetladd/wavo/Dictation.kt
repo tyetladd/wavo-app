@@ -29,8 +29,10 @@ class Dictation(
 
     data class Ui(
         val phase: Phase = Phase.Idle,
-        /** The loudest sample of the last tenth of a second, 0 to 1. */
+        /** The RMS of the last thirtieth of a second, 0 to 1. */
         val level: Float = 0f,
+        /** The last sixteen levels, oldest first: the pill's bars. */
+        val levels: List<Float> = Pill.empty(),
         /** When the recording started, on [SystemClock.elapsedRealtime]. */
         val startedAt: Long = 0,
         /** Why the last dictation gave no text. */
@@ -104,9 +106,9 @@ class Dictation(
         return true
     }
 
-    /** A tenth of a second more is recorded: the pieces complete with it go to the engine. */
+    /** A thirtieth of a second more is recorded: the pieces complete with it go to the engine. */
     private fun heard(level: Float) {
-        ui.update { it.copy(level = level) }
+        ui.update { it.copy(level = level, levels = Pill.push(it.levels, level)) }
         val pieces = pieces ?: return
         val more = recorder.since(fed)
         fed += more.size
