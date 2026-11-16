@@ -209,7 +209,8 @@ class WavoIme : InputMethodService() {
                         stops = false
                         if (started) main.post(tick) else if (!dictation.allowed) openApp()
                     }
-                    Dictation.Phase.Recording -> {
+                    // The keyboard has no pause button of its own: a press ends it either way.
+                    Dictation.Phase.Recording, Dictation.Phase.Paused -> {
                         started = false
                         stops = true
                     }

@@ -23,8 +23,11 @@ class Recorder {
     @Volatile private var running = false
     private val chunks = ArrayList<FloatArray>()
     private var samples = 0
+    private var held = false
 
     val recording: Boolean get() = running
+    /** Suspended by [pause], with what is recorded kept for [resume]. */
+    val paused: Boolean get() = held
 
     /**
      * Starts recording; `false` when the microphone can't be opened. `level` gets the RMS of each
@@ -34,6 +37,35 @@ class Recorder {
      */
     @SuppressLint("MissingPermission")
     fun start(level: (Float) -> Unit, full: () -> Unit): Boolean {
+        synchronized(chunks) {
+            chunks.clear()
+            samples = 0
+        }
+        held = false
+        return open(level, full)
+    }
+
+    /**
+     * Suspends the microphone and keeps what is recorded: a pause is not the end of the dictation,
+     * and [resume] goes on into the same recording. Nothing is captured while paused, so the gap is
+     * not in the audio.
+     */
+    fun pause() {
+        if (!running) return
+        running = false
+        record?.let { runCatching { it.stop() } }
+        reader?.join(1000)
+        record?.release()
+        record = null
+        reader = null
+        held = true
+    }
+
+    /** Goes on after [pause], appending to the same recording. */
+    fun resume(level: (Float) -> Unit, full: () -> Unit): Boolean = open(level, full)
+
+    @SuppressLint("MissingPermission")
+    private fun open(level: (Float) -> Unit, full: () -> Unit): Boolean {
         if (running) return true
 
         val smallest = AudioRecord.getMinBufferSize(RATE, CHANNEL, FORMAT)
@@ -53,12 +85,9 @@ class Recorder {
             return false
         }
 
-        synchronized(chunks) {
-            chunks.clear()
-            samples = 0
-        }
         record = opened
         running = true
+        held = false
         reader = thread(name = "wavo-mic") {
             val buffer = FloatArray(RATE / 10)
             while (running) {
@@ -106,6 +135,7 @@ class Recorder {
     /** Ends the recording and returns it. */
     fun stop(): FloatArray {
         running = false
+        held = false
         record?.let { runCatching { it.stop() } }
         reader?.join(1000)
         record?.release()

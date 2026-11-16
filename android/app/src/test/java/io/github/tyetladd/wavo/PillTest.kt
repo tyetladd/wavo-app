@@ -89,6 +89,8 @@ class PillTest {
         assertTrue(Pill.animates(Dictation.Phase.Recording, animate = true))
         assertTrue(Pill.animates(Dictation.Phase.Transcribing, animate = true))
         assertFalse(Pill.animates(Dictation.Phase.Idle, animate = true))
+        // Paused keeps the last frame on screen but asks for no new one: the microphone is off.
+        assertFalse(Pill.animates(Dictation.Phase.Paused, animate = true))
     }
 
     @Test

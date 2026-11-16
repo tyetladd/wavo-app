@@ -25,7 +25,7 @@ class Dictation(
     /** Follows the setting "Conversation": the app's screen does, the keyboard doesn't. */
     private val conversations: Boolean = false,
 ) {
-    enum class Phase { Idle, Recording, Transcribing }
+    enum class Phase { Idle, Recording, Paused, Transcribing }
 
     data class Ui(
         val phase: Phase = Phase.Idle,
@@ -163,7 +163,7 @@ class Dictation(
      * speakers are told apart meanwhile, on a thread of their own: that takes the whole recording.
      */
     fun stop() {
-        if (ui.value.phase != Phase.Recording) return
+        if (ui.value.phase != Phase.Recording && ui.value.phase != Phase.Paused) return
 
         val all = recorder.stop()
         audio = all
@@ -189,6 +189,38 @@ class Dictation(
                 }
             }
         }
+    }
+
+    /**
+     * Suspends the dictation without ending it: the microphone stops, the pieces complete so far go
+     * to the engine so their text shows, and [resume] goes on into the same recording and the same
+     * history entry. The paused gap is not in the audio.
+     */
+    fun pause() {
+        if (ui.value.phase != Phase.Recording) return
+        recorder.pause()
+        val pieces = pieces
+        if (pieces != null) {
+            val more = recorder.since(fed)
+            fed += more.size
+            pieces.feed(more)
+            while (true) {
+                val piece = pieces.next() ?: break
+                submit(piece, pieces.start)
+            }
+        }
+        ui.update { it.copy(phase = Phase.Paused, level = 0f) }
+    }
+
+    /** Goes on after [pause]; `false` with [Ui.error] set when the microphone can't be reopened. */
+    fun resume(): Boolean {
+        if (ui.value.phase != Phase.Paused) return false
+        if (!recorder.resume(::heard, ::stop)) {
+            ui.update { it.copy(error = "The microphone is busy or can't be opened") }
+            return false
+        }
+        ui.update { it.copy(phase = Phase.Recording) }
+        return true
     }
 
     /** A result is back: after the stop, the last one ends the dictation. */
@@ -276,7 +308,7 @@ class Dictation(
     fun toggle() {
         when (ui.value.phase) {
             Phase.Idle -> start()
-            Phase.Recording -> stop()
+            Phase.Recording, Phase.Paused -> stop()
             Phase.Transcribing -> Unit
         }
     }

@@ -221,6 +221,7 @@ private fun DictateScreen(dictation: Dictation, toModels: () -> Unit) {
     // The clock of a recording.
     var now by remember { mutableLongStateOf(SystemClock.elapsedRealtime()) }
     val recording = ui.phase == Dictation.Phase.Recording
+    val paused = ui.phase == Dictation.Phase.Paused
     LaunchedEffect(recording) {
         while (recording) {
             now = SystemClock.elapsedRealtime()
@@ -276,6 +277,7 @@ private fun DictateScreen(dictation: Dictation, toModels: () -> Unit) {
 
         val status = when {
             recording -> "Listening  ${clock(now - ui.startedAt)}"
+            paused -> "Paused — the same dictation goes on when you resume"
             ui.phase == Dictation.Phase.Transcribing ->
                 (engine as? Engine.State.Loading)?.let { "Loading ${it.model}…" }
                     ?: if (ui.conversation) "Telling the speakers apart…" else "Transcribing…"
@@ -321,8 +323,11 @@ private fun DictateScreen(dictation: Dictation, toModels: () -> Unit) {
         }
         LaunchedEffect(animating, pillWidth) {
             if (!animating) {
-                field = null
-                rim = null
+                // Paused keeps the last frame on screen; only going idle clears it.
+                if (ui.phase == Dictation.Phase.Idle) {
+                    field = null
+                    rim = null
+                }
                 return@LaunchedEffect
             }
             // The rim does not move: it is made once, and only the colours are made again.
@@ -339,7 +344,7 @@ private fun DictateScreen(dictation: Dictation, toModels: () -> Unit) {
                 delay(33)
             }
         }
-        if (animating) {
+        if (App.instance.settings.animate && ui.phase != Dictation.Phase.Idle) {
             val elapsed = tick - phaseStart
             val transcribing = ui.phase == Dictation.Phase.Transcribing
             val settle =
@@ -367,27 +372,39 @@ private fun DictateScreen(dictation: Dictation, toModels: () -> Unit) {
             Button(onClick = toModels) { Text("Download a model") }
         } else {
             val scale = if (recording) 1f + minOf(ui.level * 2f, 1f) * 0.15f else 1f
-            LargeFloatingActionButton(
-                onClick = {
-                    when {
-                        ui.phase != Dictation.Phase.Idle -> dictation.toggle()
-                        dictation.allowed -> dictation.start()
-                        else -> ask.launch(Manifest.permission.RECORD_AUDIO)
-                    }
-                },
-                containerColor = when {
-                    recording -> MaterialTheme.colorScheme.error
-                    ui.phase == Dictation.Phase.Transcribing -> MaterialTheme.colorScheme.surfaceVariant
-                    else -> MaterialTheme.colorScheme.primary
-                },
-                contentColor = if (recording) MaterialTheme.colorScheme.onError else MaterialTheme.colorScheme.onPrimary,
-                modifier = Modifier.graphicsLayer(scaleX = scale, scaleY = scale),
+            val ending = recording || paused
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
             ) {
-                Icon(
-                    painterResource(if (recording) R.drawable.ic_stop else R.drawable.ic_mic),
-                    contentDescription = if (recording) "Stop" else "Dictate",
-                    modifier = Modifier.size(36.dp),
-                )
+                LargeFloatingActionButton(
+                    onClick = {
+                        when {
+                            ui.phase != Dictation.Phase.Idle -> dictation.toggle()
+                            dictation.allowed -> dictation.start()
+                            else -> ask.launch(Manifest.permission.RECORD_AUDIO)
+                        }
+                    },
+                    containerColor = when {
+                        recording -> MaterialTheme.colorScheme.error
+                        paused || ui.phase == Dictation.Phase.Transcribing -> MaterialTheme.colorScheme.surfaceVariant
+                        else -> MaterialTheme.colorScheme.primary
+                    },
+                    contentColor = if (recording) MaterialTheme.colorScheme.onError else MaterialTheme.colorScheme.onPrimary,
+                    modifier = Modifier.graphicsLayer(scaleX = scale, scaleY = scale),
+                ) {
+                    Icon(
+                        painterResource(if (ending) R.drawable.ic_stop else R.drawable.ic_mic),
+                        contentDescription = if (ending) "Stop" else "Dictate",
+                        modifier = Modifier.size(36.dp),
+                    )
+                }
+                // Pause keeps the dictation open: resuming goes on into the same record.
+                if (ending) {
+                    OutlinedButton(onClick = { if (paused) dictation.resume() else dictation.pause() }) {
+                        Text(if (paused) "Resume" else "Pause")
+                    }
+                }
             }
         }
         Spacer(Modifier.height(12.dp))

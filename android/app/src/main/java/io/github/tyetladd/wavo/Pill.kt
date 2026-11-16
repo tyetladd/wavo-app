@@ -73,7 +73,7 @@ object Pill {
      * frame is asked for — which is where the saving is.
      */
     fun animates(phase: Dictation.Phase, animate: Boolean): Boolean =
-        animate && phase != Dictation.Phase.Idle
+        animate && (phase == Dictation.Phase.Recording || phase == Dictation.Phase.Transcribing)
 
     /** Bar `i` of the wave: low to high and back, each bar [WAVE_STAGGER_MS] after the one before. */
     fun wave(i: Int, elapsedMs: Long): Float {
