@@ -96,6 +96,8 @@ class App : Application() {
             settings.gpuCrashed = true
         }
         Speakers.refresh()
+        // A crash between a recording and its row: tidied off the main thread, before anything shows.
+        kotlin.concurrent.thread(name = "wavo-reconcile") { history.reconcile() }
         // What the first builds' downloader left: nothing reads it now.
         File(filesDir, "hub").deleteRecursively()
     }

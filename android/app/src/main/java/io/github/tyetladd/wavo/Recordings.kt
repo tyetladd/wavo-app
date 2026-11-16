@@ -75,6 +75,10 @@ class Recordings(private val root: File) {
             .sorted()
             .toList()
 
+    /** The rows whose recording is gone: their text stays, their audio reference goes. */
+    fun dangling(rows: List<Entry>): List<Long> =
+        rows.filter { it.audio != null && file(it.audio)?.exists() != true }.map { it.id }
+
     /** The canonical 44-byte WAV header for `data` bytes of 16 kHz mono 16-bit samples. */
     private fun header(data: Int): ByteArray {
         val head = ByteArray(44)

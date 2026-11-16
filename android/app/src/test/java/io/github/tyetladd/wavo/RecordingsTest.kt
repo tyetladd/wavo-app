@@ -124,4 +124,35 @@ class RecordingsTest {
 
     private fun le32(b: ByteArray, at: Int): Int =
         le16(b, at) or (le16(b, at + 2) shl 16)
+
+    private fun entry(id: Long, audio: String?) = Entry(id, at, "text", "model", 1000, 100, audio)
+
+    @Test
+    fun a_row_whose_recording_is_gone_is_dangling() {
+        val r = Recordings(tmp.root)
+        val present = r.name(at)
+        r.write(present, FloatArray(16))
+        val rows = listOf(entry(1, present), entry(2, r.name(at + 1)), entry(3, null))
+        // Row 2's file was never written; row 3 keeps no recording at all.
+        assertEquals(listOf(2L), r.dangling(rows))
+    }
+
+    @Test
+    fun a_crash_between_the_file_and_the_row_leaves_an_orphan_to_delete() {
+        val r = Recordings(tmp.root)
+        val kept = r.name(at)
+        val orphan = r.name(at + 1)
+        r.write(kept, FloatArray(16))
+        r.write(orphan, FloatArray(16))
+        val rows = listOf(entry(1, kept))
+
+        assertEquals(listOf(orphan), r.orphans(rows.mapNotNull { it.audio }.toSet()))
+        assertEquals(emptyList<Long>(), r.dangling(rows))
+    }
+
+    @Test
+    fun a_row_pointing_outside_the_folder_is_dangling_not_a_way_out() {
+        val r = Recordings(tmp.root)
+        assertEquals(listOf(7L), r.dangling(listOf(entry(7, "../../etc/passwd"))))
+    }
 }

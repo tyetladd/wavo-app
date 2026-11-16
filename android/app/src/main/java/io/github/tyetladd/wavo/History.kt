@@ -85,10 +85,32 @@ class History(context: Context) : SQLiteOpenHelper(context, "history.db", null, 
             if (c.moveToFirst()) c.getString(0) else null
         }
 
+    /**
+     * What a start reconciles: a recording no row points at goes — a crash between the file and the
+     * row left it, and the dictation it came from produced no text to link it to — and a row whose
+     * recording is gone keeps its text and loses the reference.
+     */
+    fun reconcile() {
+        val rows = all()
+        recordings.orphans(rows.mapNotNull { it.audio }.toSet()).forEach { recordings.delete(it) }
+        val gone = recordings.dangling(rows)
+        if (gone.isNotEmpty()) {
+            gone.forEach { writableDatabase.execSQL("UPDATE history SET audio = NULL WHERE id = ?", arrayOf(it)) }
+            reload()
+        }
+    }
+
     private fun reload() {
+        entries.value = read("500")
+    }
+
+    /** Every row, not only the 500 shown: nothing is pruned, so reconciliation sees them all. */
+    private fun all(): List<Entry> = read(null)
+
+    private fun read(limit: String?): List<Entry> {
         val out = ArrayList<Entry>()
         val columns = arrayOf("id", "at", "text", "model", "audio_ms", "took_ms", "audio")
-        readableDatabase.query("history", columns, null, null, null, null, "id DESC", "500").use { c ->
+        readableDatabase.query("history", columns, null, null, null, null, "id DESC", limit).use { c ->
             while (c.moveToNext()) {
                 out += Entry(
                     c.getLong(0), c.getLong(1), c.getString(2), c.getString(3),
@@ -96,6 +118,6 @@ class History(context: Context) : SQLiteOpenHelper(context, "history.db", null, 
                 )
             }
         }
-        entries.value = out
+        return out
     }
 }

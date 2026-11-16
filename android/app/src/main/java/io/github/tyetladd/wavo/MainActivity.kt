@@ -807,7 +807,8 @@ private fun SettingsScreen() {
                 Text("Recording animation")
                 Text(
                     "The pill of colour and bars while you speak, as on the Mac. Off, the microphone " +
-                        "button's pulse is all, and the phone does less work.",
+                        "button's pulse is all and the engine goes about a sixth faster — 6× against " +
+                        "5× real time with gigaam-v3 on a Galaxy S20 Ultra.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
