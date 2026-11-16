@@ -10,6 +10,7 @@ import android.content.Intent
 import android.os.Bundle
 import android.graphics.Bitmap
 import android.media.MediaPlayer
+import android.net.Uri
 import android.os.SystemClock
 import android.provider.Settings as SystemSettings
 import android.text.format.DateUtils
@@ -92,9 +93,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.platform.LocalDensity
+import androidx.activity.compose.BackHandler
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
+import androidx.core.content.pm.PackageInfoCompat
 import kotlinx.coroutines.delay
 
 class MainActivity : ComponentActivity() {
@@ -140,6 +144,8 @@ private enum class Tab(val label: String) { Dictate("Dictate"), Models("Models")
 private fun Wavo(dictation: Dictation) {
     var tab by rememberSaveable { mutableStateOf(Tab.Dictate) }
     val models by Models.list.collectAsState()
+    // Models is a screen under Settings, so the system back goes there, not out of the app.
+    BackHandler(enabled = tab == Tab.Models) { tab = Tab.Settings }
     // Without a model there is nothing to dictate with: the first screen is where to get one.
     LaunchedEffect(Unit) { if (models.none { it.downloaded }) tab = Tab.Models }
 
@@ -186,6 +192,10 @@ private fun Wavo(dictation: Dictation) {
             }
         }
     }
+}
+
+private fun openUrl(context: Context, url: String) {
+    runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
 }
 
 private fun copy(context: Context, text: String) {
@@ -248,9 +258,12 @@ private fun DictateScreen(dictation: Dictation, toModels: () -> Unit) {
         }
         Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(scroll)) {
             val last = ui.last
-            if (ui.phase != Dictation.Phase.Idle && ui.partial.isNotEmpty()) {
-                // The pieces ready while the person speaks on.
-                Text(ui.partial, style = MaterialTheme.typography.headlineSmall)
+            if (ui.phase != Dictation.Phase.Idle) {
+                // A new dictation clears the field at once, rather than leaving the last text on
+                // screen until the first words of this one arrive.
+                if (ui.partial.isNotEmpty()) {
+                    Text(ui.partial, style = MaterialTheme.typography.headlineSmall)
+                }
             } else if (last == null) {
                 Text(
                     "Tap the microphone and speak. The text shows here; nothing leaves the phone.",
@@ -285,8 +298,8 @@ private fun DictateScreen(dictation: Dictation, toModels: () -> Unit) {
             ui.error != null -> ui.error!!
             engine is Engine.State.Loading -> "Loading ${(engine as Engine.State.Loading).model}…"
             engine is Engine.State.Failed -> (engine as Engine.State.Failed).message
-            engine is Engine.State.Ready -> "$chosen is ready"
-            else -> chosen
+            engine is Engine.State.Ready -> "Ready"
+            else -> ""
         }
         if (chosen != null && (ui.conversation || (ui.phase == Dictation.Phase.Idle && App.instance.settings.conversation))) {
             Text(
@@ -397,20 +410,24 @@ private fun DictateScreen(dictation: Dictation, toModels: () -> Unit) {
                         modifier = Modifier.size(36.dp),
                     )
                 }
-                // Pause keeps the dictation open: resuming goes on into the same record. The same
-                // size as the stop beside it, so the two read as one pair of controls.
-                if (ending) {
-                    LargeFloatingActionButton(
-                        onClick = { if (paused) dictation.resume() else dictation.pause() },
-                        containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                        contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
-                    ) {
-                        Icon(
-                            painterResource(if (paused) R.drawable.ic_play else R.drawable.ic_pause),
-                            contentDescription = if (paused) "Resume" else "Pause",
-                            modifier = Modifier.size(36.dp),
-                        )
-                    }
+                // Pause keeps the dictation open: resuming goes on into the same record. Always in
+                // place, so the layout does not move when a dictation starts — inactive until there
+                // is one to pause, and the same size as the stop beside it.
+                LargeFloatingActionButton(
+                    onClick = {
+                        if (ending) {
+                            if (paused) dictation.resume() else dictation.pause()
+                        }
+                    },
+                    containerColor = if (ending) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceVariant,
+                    contentColor = if (ending) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.alpha(if (ending) 1f else 0.38f),
+                ) {
+                    Icon(
+                        painterResource(if (paused) R.drawable.ic_play else R.drawable.ic_pause),
+                        contentDescription = if (paused) "Resume" else "Pause",
+                        modifier = Modifier.size(36.dp),
+                    )
                 }
             }
         }
@@ -620,13 +637,39 @@ private fun HistoryScreen() {
         }
         failed = null
         busy = entry.id
-        Engine.transcribeWith(model, pcm) { result ->
-            busy = null
-            result.onSuccess { heard ->
-                if (heard.text.isEmpty()) failed = "$model heard no speech in it."
-                else history.add(heard, audio)
+        val settings = App.instance.settings
+        // Conversation tells the speakers apart over the whole recording, so its cleanup waits for
+        // them, exactly as a live dictation's does. Without the speaker models it is a plain text.
+        val conversation = settings.conversation && Speakers.ready.value
+        Engine.transcribeWith(model, pcm, clean = if (conversation) false else null) { result ->
+            result.onFailure {
+                busy = null
+                failed = it.message ?: "The engine failed"
             }
-            result.onFailure { failed = it.message ?: "The engine failed" }
+            result.onSuccess { heard ->
+                if (!conversation) {
+                    busy = null
+                    if (heard.text.isEmpty()) failed = "$model heard no speech in it."
+                    else history.add(heard, audio)
+                    return@onSuccess
+                }
+                kotlin.concurrent.thread(name = "wavo-speakers") {
+                    val split = runCatching { Speakers.diarize(pcm) }
+                    android.os.Handler(android.os.Looper.getMainLooper()).post {
+                        busy = null
+                        val turns = turns(heard.words, split.getOrDefault(emptyList())).map {
+                            if (settings.clean) {
+                                it.copy(text = Native.clean(it.text, heard.language ?: settings.language))
+                            } else {
+                                it
+                            }
+                        }
+                        val text = script(turns.filter { it.text.isNotEmpty() })
+                        if (text.isEmpty()) failed = "$model heard no speech in it."
+                        else history.add(heard.copy(text = text), audio)
+                    }
+                }
+            }
         }
     }
 
@@ -799,6 +842,30 @@ private fun SettingsScreen(onModels: () -> Unit) {
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
+        Section("About")
+        val info = remember {
+            runCatching { context.packageManager.getPackageInfo(context.packageName, 0) }.getOrNull()
+        }
+        Text("Wavo for Android", style = MaterialTheme.typography.titleMedium)
+        Text(
+            "Version ${info?.versionName ?: "?"} · build " +
+                (info?.let { PackageInfoCompat.getLongVersionCode(it) }?.toString() ?: "?"),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Text(
+            "Local dictation: speech is recognized on this phone, and nothing leaves it. " +
+                "Only a model's download uses the network.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            TextButton(onClick = { openUrl(context, "https://github.com/vladkens/wavo-app") }) { Text("Source") }
+            TextButton(onClick = { openUrl(context, "https://github.com/vladkens/wavo-app/blob/main/LICENSE") }) {
+                Text("MIT licence")
+            }
+        }
+
         Section("Keyboard")
         Text(
             "Turn the Wavo voice keyboard on once, then switch to it in any app to dictate into a field.",

@@ -97,13 +97,13 @@ object Engine {
      * dictation rather than fighting it, and it leaves the setting alone. The model is freed after,
      * so the screens never claim a model is ready that the settings did not choose.
      */
-    fun transcribeWith(model: String, pcm: FloatArray, done: (Result<Heard>) -> Unit) {
+    fun transcribeWith(model: String, pcm: FloatArray, clean: Boolean? = null, done: (Result<Heard>) -> Unit) {
         worker.execute {
             val settings = App.instance.settings
             val heard = runCatching {
                 val name = ensure(model)
                 val json = onGpu(loaded?.endsWith("|gpu") == true) {
-                    Native.transcribe(handle, pcm, settings.language, settings.clean)
+                    Native.transcribe(handle, pcm, settings.language, clean ?: settings.clean)
                 }
                 Heard.parse(json, name, device)
             }
