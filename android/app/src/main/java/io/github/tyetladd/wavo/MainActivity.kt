@@ -558,6 +558,34 @@ private fun HistoryScreen() {
     var confirm by remember { mutableStateOf(false) }
     var player by remember { mutableStateOf<MediaPlayer?>(null) }
     DisposableEffect(Unit) { onDispose { player?.release(); player = null } }
+    val models by Models.list.collectAsState()
+    var pickFor by remember { mutableStateOf<Entry?>(null) }
+    var busy by remember { mutableStateOf<Long?>(null) }
+    var failed by remember { mutableStateOf<String?>(null) }
+
+    /**
+     * Another version of the same recording, by another model: a new row pointing at the same file,
+     * so the two texts can be compared and either kept. The engine runs it on its own thread, after
+     * any dictation under way.
+     */
+    fun retranscribe(entry: Entry, model: String) {
+        val audio = entry.audio ?: return
+        val pcm = history.recordings.read(audio)
+        if (pcm == null) {
+            failed = "The recording is no longer there."
+            return
+        }
+        failed = null
+        busy = entry.id
+        Engine.transcribeWith(model, pcm) { result ->
+            busy = null
+            result.onSuccess { heard ->
+                if (heard.text.isEmpty()) failed = "$model heard no speech in it."
+                else history.add(heard, audio)
+            }
+            result.onFailure { failed = it.message ?: "The engine failed" }
+        }
+    }
 
     /** Plays a dictation's recording; the one before stops, and it is released when it ends. */
     fun play(entry: Entry) {
@@ -619,9 +647,18 @@ private fun HistoryScreen() {
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                         if (entry.audio != null) {
-                            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                TextButton(onClick = { play(entry) }) { Text("Play") }
-                                TextButton(onClick = { shareAudio(entry) }) { Text("Share audio") }
+                            if (busy == entry.id) {
+                                Text(
+                                    "Transcribing…",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.primary,
+                                )
+                            } else {
+                                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    TextButton(onClick = { play(entry) }) { Text("Play") }
+                                    TextButton(onClick = { shareAudio(entry) }) { Text("Share audio") }
+                                    TextButton(onClick = { pickFor = entry }) { Text("Transcribe with…") }
+                                }
                             }
                         }
                     }
@@ -630,6 +667,55 @@ private fun HistoryScreen() {
             }
         }
         item { Text("Tap a dictation to copy it.", style = MaterialTheme.typography.bodySmall) }
+    }
+
+    val pick = pickFor
+    if (pick != null) {
+        val options = models.filter { it.downloaded }
+        AlertDialog(
+            onDismissRequest = { pickFor = null },
+            title = { Text("Transcribe with") },
+            text = {
+                Column {
+                    Text(
+                        "The same recording, another model. Its text is added as a new version, " +
+                            "and both point at the one audio file.",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    if (options.isEmpty()) Text("No model is downloaded yet.")
+                    options.forEach { m ->
+                        Row(
+                            Modifier.fillMaxWidth().clickable {
+                                pickFor = null
+                                retranscribe(pick, m.name)
+                            }.padding(vertical = 8.dp),
+                        ) {
+                            Column(Modifier.weight(1f)) {
+                                Text(if (m.name == pick.model) "${m.name} — this one" else m.name)
+                                Text(
+                                    m.languages,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = { TextButton(onClick = { pickFor = null }) { Text("Cancel") } },
+        )
+    }
+
+    val why = failed
+    if (why != null) {
+        AlertDialog(
+            onDismissRequest = { failed = null },
+            title = { Text("It didn't transcribe") },
+            text = { Text(why) },
+            confirmButton = { TextButton(onClick = { failed = null }) { Text("OK") } },
+        )
     }
 
     if (confirm) {

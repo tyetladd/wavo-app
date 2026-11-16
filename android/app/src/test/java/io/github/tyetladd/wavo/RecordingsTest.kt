@@ -155,4 +155,25 @@ class RecordingsTest {
         val r = Recordings(tmp.root)
         assertEquals(listOf(7L), r.dangling(listOf(entry(7, "../../etc/passwd"))))
     }
+
+    @Test
+    fun a_recording_reads_back_as_the_samples_it_was_written_from() {
+        val r = Recordings(tmp.root)
+        val pcm = FloatArray(1600) { kotlin.math.sin(it * 0.07).toFloat() * 0.6f }
+        val name = r.name(at)
+        r.write(name, pcm)
+        val back = r.read(name)
+        assertNotNull(back)
+        assertEquals(pcm.size, back!!.size)
+        for (i in pcm.indices) {
+            assertTrue("sample $i", kotlin.math.abs(back[i] - pcm[i]) <= 1f / 32768f)
+        }
+    }
+
+    @Test
+    fun reading_a_missing_or_unsafe_name_gives_nothing() {
+        val r = Recordings(tmp.root)
+        assertNull(r.read(r.name(at)))
+        assertNull(r.read("../../etc/passwd"))
+    }
 }

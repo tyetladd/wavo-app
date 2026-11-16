@@ -65,9 +65,16 @@ class History(context: Context) : SQLiteOpenHelper(context, "history.db", null, 
     fun delete(id: Long) {
         val audio = audioOf(id)
         writableDatabase.delete("history", "id = ?", arrayOf(id.toString()))
-        audio?.let { recordings.delete(it) }
+        // Several versions of one recording share its file: it goes only when the last one does.
+        if (audio != null && !stillReferenced(audio)) recordings.delete(audio)
         reload()
     }
+
+    /** Whether another row still points at `audio`. */
+    private fun stillReferenced(audio: String): Boolean =
+        readableDatabase.query("history", arrayOf("id"), "audio = ?", arrayOf(audio), null, null, null, "1").use { c ->
+            c.count > 0
+        }
 
     fun clear() {
         val kept = ArrayList<String>()

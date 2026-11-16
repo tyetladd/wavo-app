@@ -91,6 +91,29 @@ object Engine {
         }
     }
 
+    /**
+     * A recording already kept, transcribed by a model other than the one the settings name:
+     * another version of the same audio. It runs on the engine's own thread, so it waits for a
+     * dictation rather than fighting it, and it leaves the setting alone. The model is freed after,
+     * so the screens never claim a model is ready that the settings did not choose.
+     */
+    fun transcribeWith(model: String, pcm: FloatArray, done: (Result<Heard>) -> Unit) {
+        worker.execute {
+            val settings = App.instance.settings
+            val heard = runCatching {
+                val name = ensure(model)
+                val json = onGpu(loaded?.endsWith("|gpu") == true) {
+                    Native.transcribe(handle, pcm, settings.language, settings.clean)
+                }
+                Heard.parse(json, name, device)
+            }
+            heard.exceptionOrNull()?.let(::failed)
+            free()
+            if (state.value !is State.Failed) state.value = State.Idle
+            main.post { done(heard) }
+        }
+    }
+
     /** Loads the model ahead of the first dictation: the keyboard came up, or the app opened. */
     fun prewarm() {
         worker.execute {
@@ -108,10 +131,10 @@ object Engine {
         }
     }
 
-    /** The loaded model's name, after loading the one the settings name if another, or none, is in. */
-    private fun ensure(): String {
+    /** The loaded model's name, after loading `want` or the one the settings name if another is in. */
+    private fun ensure(want: String? = null): String {
         val settings = App.instance.settings
-        val name = settings.model ?: error("No model is chosen: download one in Wavo")
+        val name = want ?: settings.model ?: error("No model is chosen: download one in Wavo")
         val path = Models.path(name) ?: error("The model $name isn't downloaded")
         var backend = settings.backend
         if (handle != 0L && loaded == "$path|$backend") return name

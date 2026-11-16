@@ -60,6 +60,24 @@ class Recordings(private val root: File) {
         }
     }
 
+    /** The recording's samples back as floats, or `null` when it is gone or not a WAV we wrote. */
+    fun read(name: String): FloatArray? {
+        val file = file(name)?.takeIf { it.isFile } ?: return null
+        val bytes = runCatching { file.readBytes() }.getOrNull() ?: return null
+        if (bytes.size < 44 || String(bytes, 0, 4) != "RIFF" || String(bytes, 8, 4) != "WAVE") return null
+        val data = le32(bytes, 40)
+        if (data < 0 || 44 + data > bytes.size) return null
+        return FloatArray(data / 2) { i ->
+            val at = 44 + i * 2
+            val v = (bytes[at].toInt() and 0xFF) or (bytes[at + 1].toInt() shl 8)
+            v.toShort() / 32768f
+        }
+    }
+
+    private fun le32(b: ByteArray, at: Int): Int =
+        (b[at].toInt() and 0xFF) or ((b[at + 1].toInt() and 0xFF) shl 8) or
+            ((b[at + 2].toInt() and 0xFF) shl 16) or ((b[at + 3].toInt() and 0xFF) shl 24)
+
     /** Removes a recording; a missing one, or a name outside the folder, is nothing to do. */
     fun delete(name: String) {
         val file = file(name) ?: return
