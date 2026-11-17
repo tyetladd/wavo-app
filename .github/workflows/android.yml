@@ -31,6 +31,10 @@ jobs:
 
       - run: cargo install --locked cargo-ndk
 
+      # The engine is built for the NDK app/build.gradle.kts pins; the runner's own is another
+      # version, and nothing installs the pinned one for us. Keep the two in step.
+      - run: $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --install "ndk;26.1.10909125"
+
       # The engine's wrapper and the desktop app's text cleanup, on the runner.
       - run: cargo test --release --locked
         working-directory: android/core

@@ -108,9 +108,23 @@ val sdkDir = System.getenv("ANDROID_HOME")
     }
     ?: throw GradleException("No Android SDK: set ANDROID_HOME or write sdk.dir in android/local.properties")
 
+val ndkHome = File(sdkDir, "ndk/${android.ndkVersion}")
+
 val cargoNdk = tasks.register<Exec>("cargoNdk") {
     workingDir = rootProject.file("core")
-    environment("ANDROID_NDK_HOME", File(sdkDir, "ndk/${android.ndkVersion}").path)
+    // The old ndkDirectory accessor also had AGP install the NDK; a path of our own does not, so
+    // say what is missing rather than let cargo fail with "No such file or directory".
+    doFirst {
+        if (!ndkHome.isDirectory) {
+            throw GradleException(
+                "NDK ${android.ndkVersion} is not installed at $ndkHome.\n" +
+                    "Install it: sdkmanager --install \"ndk;${android.ndkVersion}\"",
+            )
+        }
+    }
+    // Both, because a runner may already point ANDROID_NDK_ROOT at an NDK of its own.
+    environment("ANDROID_NDK_HOME", ndkHome.path)
+    environment("ANDROID_NDK_ROOT", ndkHome.path)
     commandLine(
         listOf("cargo", "ndk") + abis.flatMap { listOf("-t", it) } +
             listOf("--platform", "29", "-o", file("src/main/jniLibs").path, "build", "--release", "--locked"),
