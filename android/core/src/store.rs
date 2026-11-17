@@ -1,4 +1,4 @@
-// Copyright (c) vladkens | MIT License | https://github.com/vladkens/wavo-app
+// Copyright (c) tyetladd | MIT License | https://github.com/tyetladd/wavo-app
 
 //! The models in the app's folder, and their downloads from Hugging Face. Not `wavo::hub`'s cache:
 //! that one takes file locks, which Rust's std doesn't have on Android (`lock() not supported`),

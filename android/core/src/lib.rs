@@ -1,4 +1,4 @@
-// Copyright (c) vladkens | MIT License | https://github.com/vladkens/wavo-app
+// Copyright (c) tyetladd | MIT License | https://github.com/tyetladd/wavo-app
 
 //! Wavo for Android: the speech engine ([wavo]), its models and the desktop app's text cleanup,
 //! behind the JNI functions of the Kotlin class `io.github.tyetladd.wavo.Native`.

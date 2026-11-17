@@ -1,4 +1,4 @@
-// Copyright (c) vladkens | MIT License | https://github.com/vladkens/wavo-app
+// Copyright (c) tyetladd | MIT License | https://github.com/tyetladd/wavo-app
 
 //! The engine without JNI: the models in the app's folder, and a loaded model that turns a
 //! recording into the text the person gets.

@@ -1,4 +1,4 @@
-// Copyright (c) vladkens | MIT License | https://github.com/vladkens/wavo-app
+// Copyright (c) tyetladd | MIT License | https://github.com/tyetladd/wavo-app
 
 //! The shared gradient as the core builds it: the same pixels the desktop's HUD draws, and the
 //! rim as a layer of its own rather than something the Kotlin side paints again.

@@ -1,4 +1,4 @@
-// Copyright (c) vladkens | MIT License | https://github.com/vladkens/wavo-app
+// Copyright (c) tyetladd | MIT License | https://github.com/tyetladd/wavo-app
 
 //! The fast cores of a phone. A phone's CPU has clusters of different speed (a Pixel 7 Pro: two
 //! Cortex-X1, two A78, four A55), and wavo starts a thread for every core the calling thread may

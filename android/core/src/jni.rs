@@ -1,4 +1,4 @@
-// Copyright (c) vladkens | MIT License | https://github.com/vladkens/wavo-app
+// Copyright (c) tyetladd | MIT License | https://github.com/tyetladd/wavo-app
 
 //! The functions of the Kotlin class `io.github.tyetladd.wavo.Native`. Lists and results cross as
 //! JSON strings; an error, or a panic of wavo or wgpu, is thrown as a `RuntimeException` and the
