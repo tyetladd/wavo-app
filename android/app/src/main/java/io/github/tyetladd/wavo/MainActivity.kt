@@ -63,6 +63,7 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Slider
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -632,6 +633,10 @@ private fun HistoryScreen() {
     val entries by history.entries.collectAsState()
     var confirm by remember { mutableStateOf(false) }
     var player by remember { mutableStateOf<MediaPlayer?>(null) }
+    var paused by remember { mutableStateOf(false) }
+    var position by remember { mutableIntStateOf(0) }
+    var duration by remember { mutableIntStateOf(0) }
+    var drag by remember { mutableStateOf<Float?>(null) }
     DisposableEffect(Unit) { onDispose { player?.release(); player = null } }
     val models by Models.list.collectAsState()
     var pickFor by remember { mutableStateOf<Entry?>(null) }
@@ -694,6 +699,9 @@ private fun HistoryScreen() {
     fun play(entry: Entry) {
         val file = entry.audio?.let { history.recordings.file(it) } ?: return
         player?.release()
+        paused = false
+        position = 0
+        drag = null
         player = runCatching {
             MediaPlayer().apply {
                 setDataSource(file.absolutePath)
@@ -702,6 +710,13 @@ private fun HistoryScreen() {
                 start()
             }
         }.getOrNull()
+        duration = player?.duration ?: 0
+    }
+
+    /** Stops and hides the bar; the completion listener does the same when the recording ends. */
+    fun stop() {
+        player?.release()
+        player = null
     }
 
     /** The dictation as text, for a note app: its name, when, and what was said. */
@@ -733,6 +748,15 @@ private fun HistoryScreen() {
         )
     }
 
+    // The bar's clock: four reads a second while a player lives; a released one keeps the last.
+    LaunchedEffect(player) {
+        val mp = player ?: return@LaunchedEffect
+        while (true) {
+            position = runCatching { mp.currentPosition }.getOrDefault(position)
+            delay(250)
+        }
+    }
+
     if (entries.isEmpty()) {
         Box(Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
             Text(
@@ -745,69 +769,100 @@ private fun HistoryScreen() {
         return
     }
 
-    LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        item {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                TextButton(onClick = { confirm = true }) { Text("Clear all") }
+    Column(Modifier.fillMaxSize()) {
+        LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            item {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                    TextButton(onClick = { confirm = true }) { Text("Clear all") }
+                }
             }
-        }
-        items(entries, key = { it.id }) { entry ->
-            Card(Modifier.fillMaxWidth().clickable { copy(context, entry.text) }) {
-                Row(Modifier.padding(start = 14.dp, top = 10.dp, bottom = 10.dp), verticalAlignment = Alignment.Top) {
-                    Column(Modifier.weight(1f)) {
-                        // The name, editable: tap it to name this dictation, or to clear the name.
-                        Row(verticalAlignment = Alignment.CenterVertically) {
+            items(entries, key = { it.id }) { entry ->
+                Card(Modifier.fillMaxWidth().clickable { copy(context, entry.text) }) {
+                    Row(Modifier.padding(start = 14.dp, top = 10.dp, bottom = 10.dp), verticalAlignment = Alignment.Top) {
+                        Column(Modifier.weight(1f)) {
+                            // The name, editable: tap it to name this dictation, or to clear the name.
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    entry.label ?: "Name this…",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    color = if (entry.label != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.clickable {
+                                        name = entry.label ?: ""
+                                        naming = entry
+                                    },
+                                )
+                            }
+                            Spacer(Modifier.height(4.dp))
+                            Text(entry.text)
+                            Spacer(Modifier.height(4.dp))
+                            val at = DateUtils.getRelativeTimeSpanString(entry.at, System.currentTimeMillis(), DateUtils.MINUTE_IN_MILLIS)
                             Text(
-                                entry.label ?: "Name this…",
-                                style = MaterialTheme.typography.labelLarge,
-                                color = if (entry.label != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.clickable {
-                                    name = entry.label ?: ""
-                                    naming = entry
-                                },
-                            )
-                        }
-                        Spacer(Modifier.height(4.dp))
-                        Text(entry.text)
-                        Spacer(Modifier.height(4.dp))
-                        val at = DateUtils.getRelativeTimeSpanString(entry.at, System.currentTimeMillis(), DateUtils.MINUTE_IN_MILLIS)
-                        Text(
-                            "$at · ${entry.model} · ${timing(entry.audioMs, entry.tookMs)}",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                        // The moment itself, at the end of the diagnostics: relative time above
-                        // tells how long ago, this tells when.
-                        Text(
-                            SimpleDateFormat("d MMM yyyy, HH:mm:ss", Locale.getDefault()).format(Date(entry.at)),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                        if (busy == entry.id) {
-                            Text(
-                                "Transcribing…",
+                                "$at · ${entry.model} · ${timing(entry.audioMs, entry.tookMs)}",
                                 style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.primary,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
-                        } else {
-                            // One line of commands. Sharing the text needs no recording; the rest do.
-                            // The padding is tight so all four fit beside the delete button.
-                            val tight = PaddingValues(horizontal = 6.dp)
-                            Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-                                TextButton(onClick = { shareText(entry) }, contentPadding = tight) { Text("Share text") }
-                                if (entry.audio != null) {
-                                    TextButton(onClick = { play(entry) }, contentPadding = tight) { Text("Play") }
-                                    TextButton(onClick = { shareAudio(entry) }, contentPadding = tight) { Text("Audio") }
-                                    TextButton(onClick = { pickFor = entry }, contentPadding = tight) { Text("Transcribe…") }
+                            // The moment itself, at the end of the diagnostics: relative time above
+                            // tells how long ago, this tells when.
+                            Text(
+                                SimpleDateFormat("d MMM yyyy, HH:mm:ss", Locale.getDefault()).format(Date(entry.at)),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            if (busy == entry.id) {
+                                Text(
+                                    "Transcribing…",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.primary,
+                                )
+                            } else {
+                                // One line of commands. Sharing the text needs no recording; the rest do.
+                                // The padding is tight so all four fit beside the delete button.
+                                val tight = PaddingValues(horizontal = 6.dp)
+                                Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                                    TextButton(onClick = { shareText(entry) }, contentPadding = tight) { Text("Share text") }
+                                    if (entry.audio != null) {
+                                        TextButton(onClick = { play(entry) }, contentPadding = tight) { Text("Play") }
+                                        TextButton(onClick = { shareAudio(entry) }, contentPadding = tight) { Text("Audio") }
+                                        TextButton(onClick = { pickFor = entry }, contentPadding = tight) { Text("Transcribe…") }
+                                    }
                                 }
                             }
                         }
+                        IconButton(onClick = { history.delete(entry.id) }) { Icon(Icons.Filled.Delete, "Delete") }
                     }
-                    IconButton(onClick = { history.delete(entry.id) }) { Icon(Icons.Filled.Delete, "Delete") }
                 }
             }
+            item { Text("Tap a dictation to copy it.", style = MaterialTheme.typography.bodySmall) }
         }
-        item { Text("Tap a dictation to copy it.", style = MaterialTheme.typography.bodySmall) }
+        // The playback bar: one line while something plays, gone when it stops or ends.
+        if (player != null) {
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                IconButton(onClick = {
+                    player?.let { if (paused) it.start() else it.pause() }
+                    paused = !paused
+                }) {
+                    Icon(painterResource(if (paused) R.drawable.ic_play else R.drawable.ic_pause), if (paused) "Resume" else "Pause")
+                }
+                Slider(
+                    value = drag ?: position.toFloat(),
+                    onValueChange = { drag = it },
+                    onValueChangeFinished = {
+                        drag?.let { player?.seekTo(it.toInt()); position = it.toInt() }
+                        drag = null
+                    },
+                    valueRange = 0f..duration.toFloat().coerceAtLeast(1f),
+                    modifier = Modifier.weight(1f),
+                )
+                Text(
+                    "${clock((drag ?: position.toFloat()).toLong())} / ${clock(duration.toLong())}",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                IconButton(onClick = { stop() }) { Icon(painterResource(R.drawable.ic_stop), "Stop") }
+            }
+        }
     }
 
     val named = naming
