@@ -102,9 +102,10 @@ class Pieces(private val pauseFrames: Int = PAUSE) {
         const val FLOOR = 0.006f
 
         /**
-         * Frames of quiet that make a pause, by default: a second. A piece ends a sentence for the
-         * model, so a shorter pause, a breath or a search for a word, put full stops in the middle
-         * of one. The setting trades that against how soon the text shows.
+         * Frames of quiet that make a pause when none is given: a second. A piece ends a sentence
+         * for the model, so a shorter pause, a breath or a search for a word, put full stops in the
+         * middle of one. The app passes the setting instead, which defaults to half a second: the
+         * text shows sooner, at the cost of some of those full stops.
          */
         const val PAUSE = 50
 

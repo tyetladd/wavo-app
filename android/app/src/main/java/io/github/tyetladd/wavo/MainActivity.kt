@@ -158,7 +158,8 @@ private fun Wavo(dictation: Dictation) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(if (tab == Tab.Dictate) "Wavo" else tab.label) },
+                // Nothing over the Dictate screen: a logo and its look are still to come.
+                title = { if (tab != Tab.Dictate) Text(tab.label) },
                 navigationIcon = {
                     // Models lives under Settings now, so it is a screen you come back from.
                     if (tab == Tab.Models) {
@@ -789,16 +790,16 @@ private fun HistoryScreen() {
                                 color = MaterialTheme.colorScheme.primary,
                             )
                         } else {
-                            // Sharing the text needs no recording; the rest do.
-                            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                TextButton(onClick = { shareText(entry) }) { Text("Share text") }
+                            // One line of commands. Sharing the text needs no recording; the rest do.
+                            // The padding is tight so all four fit beside the delete button.
+                            val tight = PaddingValues(horizontal = 6.dp)
+                            Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                                TextButton(onClick = { shareText(entry) }, contentPadding = tight) { Text("Share text") }
                                 if (entry.audio != null) {
-                                    TextButton(onClick = { play(entry) }) { Text("Play") }
-                                    TextButton(onClick = { shareAudio(entry) }) { Text("Audio") }
+                                    TextButton(onClick = { play(entry) }, contentPadding = tight) { Text("Play") }
+                                    TextButton(onClick = { shareAudio(entry) }, contentPadding = tight) { Text("Audio") }
+                                    TextButton(onClick = { pickFor = entry }, contentPadding = tight) { Text("Transcribe…") }
                                 }
-                            }
-                            if (entry.audio != null) {
-                                TextButton(onClick = { pickFor = entry }) { Text("Transcribe with…") }
                             }
                         }
                     }
