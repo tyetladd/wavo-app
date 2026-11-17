@@ -74,7 +74,12 @@ pub fn pull(root: &Path, name: &str, progress: impl FnMut(u64, u64) -> bool) -> 
 }
 
 /// Downloads the file at `url` into `root` as `name`: a speaker model. As [pull] otherwise.
-pub fn fetch(root: &Path, url: &str, name: &str, progress: impl FnMut(u64, u64) -> bool) -> Result<PathBuf> {
+pub fn fetch(
+  root: &Path,
+  url: &str,
+  name: &str,
+  progress: impl FnMut(u64, u64) -> bool,
+) -> Result<PathBuf> {
   store::fetch(root, url, name, progress)
 }
 
@@ -176,16 +181,15 @@ impl Engine {
       return Ok(Heard { audio_ms, ..Heard::default() });
     }
 
-    let told = language
-      .filter(|code| self.model.takes_language() && self.model.languages().iter().any(|l| l == code));
+    let told = language.filter(|code| {
+      self.model.takes_language() && self.model.languages().iter().any(|l| l == code)
+    });
     let mut options = Options::default();
     options.language = told.map(str::to_owned);
 
     let started = Instant::now();
-    let heard = self
-      .model
-      .transcribe_long(pcm, &options, |_| ControlFlow::Continue(()))
-      .map_err(text)?;
+    let heard =
+      self.model.transcribe_long(pcm, &options, |_| ControlFlow::Continue(())).map_err(text)?;
     let took_ms = started.elapsed().as_millis() as u64;
 
     // A model of one language says it; Parakeet v3 doesn't, and the person's setting stands in.
@@ -223,11 +227,18 @@ mod tests {
     let w = |ms: u32, text: &str| (ms, text.to_owned());
 
     // SentencePiece, as Parakeet and GigaAM e2e write it.
-    let pieces = [(80, "▁And"), (240, "▁so"), (400, ","), (480, "▁my"), (640, "▁fel"), (720, "low")];
+    let pieces =
+      [(80, "▁And"), (240, "▁so"), (400, ","), (480, "▁my"), (640, "▁fel"), (720, "low")];
     assert_eq!(said(&pieces), [w(80, "And"), w(240, "so,"), w(480, "my"), w(640, "fellow")]);
     // Whisper's pieces open with a space; a character vocabulary has the space as a token.
-    assert_eq!(said(&[(0, " Hello"), (0, " wor"), (0, "ld"), (0, ".")]), [w(0, "Hello"), w(0, "world.")]);
-    assert_eq!(said(&[(40, "д"), (80, "а"), (120, " "), (200, "н"), (240, "ет")]), [w(40, "да"), w(200, "нет")]);
+    assert_eq!(
+      said(&[(0, " Hello"), (0, " wor"), (0, "ld"), (0, ".")]),
+      [w(0, "Hello"), w(0, "world.")]
+    );
+    assert_eq!(
+      said(&[(40, "д"), (80, "а"), (120, " "), (200, "н"), (240, "ет")]),
+      [w(40, "да"), w(200, "нет")]
+    );
     assert_eq!(said(&[(0, ""), (0, "▁")]), []);
   }
 

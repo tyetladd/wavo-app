@@ -67,7 +67,10 @@ pub extern "system" fn Java_io_github_tyetladd_wavo_Native_models<'l>(
 
 /// Calls `progress.onProgress(done, total)` a few times a second; `false` from it, or an
 /// exception in it (which goes on to Kotlin), stops the download.
-fn reporter<'a>(env: &'a mut JNIEnv<'_>, progress: &'a JObject<'_>) -> impl FnMut(u64, u64) -> bool + 'a {
+fn reporter<'a>(
+  env: &'a mut JNIEnv<'_>,
+  progress: &'a JObject<'_>,
+) -> impl FnMut(u64, u64) -> bool + 'a {
   let mut last: Option<Instant> = None;
   move |done, total| {
     let due = last.is_none_or(|at| at.elapsed() > Duration::from_millis(200));
