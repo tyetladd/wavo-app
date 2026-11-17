@@ -55,6 +55,7 @@ fn rms(x: &[f32]) -> f32 {
 fn gate(pcm: &mut [f32]) {
   const FRAME: usize = 320;
   const HANGOVER: usize = 10;
+  const LOOKAHEAD: usize = 10;
   let frames: Vec<f32> = pcm.chunks(FRAME).map(rms).collect();
   let mut sorted = frames.clone();
   sorted.sort_by(f32::total_cmp);
@@ -69,6 +70,22 @@ fn gate(pcm: &mut [f32]) {
     }
     open[i] = hold > 0;
     hold = hold.saturating_sub(1);
+  }
+
+  // The hangover only reaches forward, so a piece's quiet onset — a fricative leading into the
+  // vowel, as Pieces cuts it — would start closed and be eaten. Openness also reaches backward,
+  // but only over frames within 40 dB of the voice: consonants, not the deep noise floor.
+  let low = voice * 0.01;
+  let mut hold = 0usize;
+  for i in (0..frames.len()).rev() {
+    if open[i] {
+      hold = LOOKAHEAD;
+    } else if hold > 0 {
+      hold -= 1;
+      if frames[i] > low {
+        open[i] = true;
+      }
+    }
   }
 
   let attack = 1.0 - (-1.0 / (0.005 * RATE)).exp();
@@ -219,6 +236,28 @@ mod tests {
     let quiet = sine(1000.0, 1.0, 0.01);
     let p = peak(&clean(&quiet));
     assert!(p >= 0.09, "a quiet continuous voice was gated away: {p}");
+  }
+
+  #[test]
+  fn a_quiet_onset_before_a_loud_vowel_survives() {
+    // A piece as Pieces cuts it: a little silence, a quiet fricative, then the vowel. Real /s/ and
+    // /f/ sit 15-30 dB under the vowel; the gate must not eat the onset the hangover cannot reach.
+    let mut sig = vec![0.0; RATE / 10];
+    let onset = sig.len();
+    sig.extend(noise(0.15, 0.025, 23));
+    let vowel = sig.len();
+    sig.extend(sine(1000.0, 0.6, 0.5));
+    let out = clean(&sig);
+
+    let lift = rms(&out[vowel..]) / rms(&sig[vowel..]);
+    let onset_in = &sig[onset..vowel];
+    let onset_out = &out[onset..vowel];
+    assert!(
+      rms(onset_out) > 0.5 * rms(onset_in) * lift,
+      "the quiet onset was gated away: {} against {}",
+      rms(onset_out),
+      rms(onset_in)
+    );
   }
 
   #[test]
