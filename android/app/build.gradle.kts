@@ -18,8 +18,8 @@ android {
         applicationId = "io.github.tyetladd.wavo"
         minSdk = 29
         targetSdk = 36
-        versionCode = 8
-        versionName = "0.4.1"
+        versionCode = 9
+        versionName = "0.4.2"
         ndk { abiFilters += abis }
     }
 
