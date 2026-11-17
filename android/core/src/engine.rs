@@ -174,7 +174,22 @@ impl Engine {
   /// window. `language` is the person's, if they set one: the model transcribes in it when it can
   /// be told, and the cleanup follows it when the model doesn't name its own. `clean` takes the
   /// hesitation sounds out and writes Russian numbers in digits, as the desktop app does.
-  pub fn transcribe(&self, pcm: &[f32], language: Option<&str>, clean: bool) -> Result<Heard> {
+  /// `filter` runs the sound cleanup ([filter::clean]) before the silence check, so a quiet
+  /// recording is lifted rather than skipped.
+  pub fn transcribe(
+    &self,
+    pcm: &[f32],
+    language: Option<&str>,
+    clean: bool,
+    filter: bool,
+  ) -> Result<Heard> {
+    let filtered;
+    let pcm = if filter {
+      filtered = crate::filter::clean(pcm);
+      &filtered[..]
+    } else {
+      pcm
+    };
     let audio_ms = (pcm.len() * 1000 / SAMPLE_RATE) as u64;
     let loudest = pcm.iter().fold(0.0f32, |m, x| m.max(x.abs()));
     if pcm.len() < MIN_SAMPLES || loudest < SILENCE {
@@ -262,19 +277,19 @@ mod tests {
     let pcm: Vec<f32> = reader.samples::<i16>().map(|s| s.unwrap() as f32 / 32768.0).collect();
 
     let engine = Engine::load(Path::new(&model), "cpu").unwrap();
-    let heard = engine.transcribe(&pcm, None, true).unwrap();
+    let heard = engine.transcribe(&pcm, None, true, false).unwrap();
     eprintln!("{}: {heard:?}", engine.device());
     assert!(!heard.text.is_empty());
     // The words are the text's, in order, and their times go up.
     let joined = heard.words.iter().map(|w| w.text.as_str()).collect::<Vec<_>>().join(" ");
-    assert_eq!(joined, engine.transcribe(&pcm, None, false).unwrap().text);
+    assert_eq!(joined, engine.transcribe(&pcm, None, false, false).unwrap().text);
     assert!(heard.words.windows(2).all(|w| w[0].ms <= w[1].ms));
     if let Ok(word) = std::env::var("WAVO_TEST_TEXT") {
       assert!(heard.text.to_lowercase().contains(&word.to_lowercase()), "{}", heard.text);
     }
 
     // Silence and a tap by mistake never reach the model.
-    assert_eq!(engine.transcribe(&vec![0.0; 32_000], None, true).unwrap().text, "");
-    assert_eq!(engine.transcribe(&pcm[..1000], None, true).unwrap().text, "");
+    assert_eq!(engine.transcribe(&vec![0.0; 32_000], None, true, false).unwrap().text, "");
+    assert_eq!(engine.transcribe(&pcm[..1000], None, true, false).unwrap().text, "");
   }
 }

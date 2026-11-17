@@ -33,7 +33,7 @@ object Native {
 
     @JvmStatic external fun languages(handle: Long): String
 
-    @JvmStatic external fun transcribe(handle: Long, pcm: FloatArray, language: String?, clean: Boolean): String
+    @JvmStatic external fun transcribe(handle: Long, pcm: FloatArray, language: String?, clean: Boolean, filter: Boolean): String
 
     @JvmStatic external fun free(handle: Long)
 

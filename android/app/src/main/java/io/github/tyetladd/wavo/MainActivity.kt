@@ -980,6 +980,7 @@ private fun SettingsScreen(onModels: () -> Unit) {
     var keep by remember { mutableStateOf(settings.keepRecordings) }
     var animate by remember { mutableStateOf(settings.animate) }
     var background by remember { mutableStateOf(settings.background) }
+    var filter by remember { mutableStateOf(settings.filter) }
     val askNotifications = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
     var unloadAfter by remember { mutableIntStateOf(settings.unloadAfterMinutes) }
 
@@ -1171,6 +1172,21 @@ private fun SettingsScreen(onModels: () -> Unit) {
         }
 
         Section("Recording")
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("Clean up the sound")
+                Text(
+                    "A high-pass filter and a noise gate before recognition: cuts rumble and steady " +
+                        "noise, and lifts a quiet voice. The recording itself is kept untouched.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Switch(checked = filter, onCheckedChange = {
+                filter = it
+                settings.filter = it
+            })
+        }
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text("Record in the background")

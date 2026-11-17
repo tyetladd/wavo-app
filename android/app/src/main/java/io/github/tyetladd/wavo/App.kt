@@ -33,6 +33,11 @@ class Settings(context: Context) {
         get() = prefs.getBoolean("clean", true)
         set(value) = prefs.edit().putBoolean("clean", value).apply()
 
+    /** A high-pass, a noise gate and a quiet-voice lift before recognition; the WAV stays raw. */
+    var filter: Boolean
+        get() = prefs.getBoolean("filter", false)
+        set(value) = prefs.edit().putBoolean("filter", value).apply()
+
     /**
      * Set while the GPU loads or runs a model, and written at once: a GPU driver that crashes
      * takes the app with it, and the next start finds this still set.

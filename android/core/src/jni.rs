@@ -201,8 +201,8 @@ pub extern "system" fn Java_io_github_tyetladd_wavo_Native_languages<'l>(
   })
 }
 
-/// `transcribe(handle: Long, pcm: FloatArray, language: String?, clean: Boolean): String`:
-/// [engine::Heard] as JSON, of 16 kHz mono samples in [-1, 1].
+/// `transcribe(handle: Long, pcm: FloatArray, language: String?, clean: Boolean, filter: Boolean):
+/// String`: [engine::Heard] as JSON, of 16 kHz mono samples in [-1, 1].
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_io_github_tyetladd_wavo_Native_transcribe<'l>(
   mut env: JNIEnv<'l>,
@@ -211,6 +211,7 @@ pub extern "system" fn Java_io_github_tyetladd_wavo_Native_transcribe<'l>(
   pcm: JFloatArray<'l>,
   language: JString<'l>,
   clean: jni::sys::jboolean,
+  filter: jni::sys::jboolean,
 ) -> jstring {
   guard(&mut env, std::ptr::null_mut(), |env| {
     let language = optional(env, &language)?;
@@ -218,7 +219,8 @@ pub extern "system" fn Java_io_github_tyetladd_wavo_Native_transcribe<'l>(
     let mut samples = vec![0.0f32; len];
     env.get_float_array_region(&pcm, 0, &mut samples).map_err(|e| e.to_string())?;
 
-    let heard = engine(handle)?.transcribe(&samples, language.as_deref(), clean != 0)?;
+    let heard =
+      engine(handle)?.transcribe(&samples, language.as_deref(), clean != 0, filter != 0)?;
     let heard = json(&heard)?;
     java(env, heard)
   })

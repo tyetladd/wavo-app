@@ -74,14 +74,15 @@ object Engine {
     /**
      * The text of 16 kHz mono samples; `done` runs on the main thread. `clean` is the setting's
      * unless given: a conversation cleans its turns itself, after the words found their speakers.
+     * `filter` is the setting's unless given, as `clean` is: the sound cleanup before the engine.
      */
-    fun transcribe(pcm: FloatArray, clean: Boolean? = null, done: (Result<Heard>) -> Unit) {
+    fun transcribe(pcm: FloatArray, clean: Boolean? = null, filter: Boolean? = null, done: (Result<Heard>) -> Unit) {
         worker.execute {
             val settings = App.instance.settings
             val heard = runCatching {
                 val model = ensure()
                 val json = onGpu(loaded?.endsWith("|gpu") == true) {
-                    Native.transcribe(handle, pcm, settings.language, clean ?: settings.clean)
+                    Native.transcribe(handle, pcm, settings.language, clean ?: settings.clean, filter ?: settings.filter)
                 }
                 Heard.parse(json, model, device)
             }
@@ -97,13 +98,13 @@ object Engine {
      * dictation rather than fighting it, and it leaves the setting alone. The model is freed after,
      * so the screens never claim a model is ready that the settings did not choose.
      */
-    fun transcribeWith(model: String, pcm: FloatArray, clean: Boolean? = null, done: (Result<Heard>) -> Unit) {
+    fun transcribeWith(model: String, pcm: FloatArray, clean: Boolean? = null, filter: Boolean? = null, done: (Result<Heard>) -> Unit) {
         worker.execute {
             val settings = App.instance.settings
             val heard = runCatching {
                 val name = ensure(model)
                 val json = onGpu(loaded?.endsWith("|gpu") == true) {
-                    Native.transcribe(handle, pcm, settings.language, clean ?: settings.clean)
+                    Native.transcribe(handle, pcm, settings.language, clean ?: settings.clean, filter ?: settings.filter)
                 }
                 Heard.parse(json, name, device)
             }
