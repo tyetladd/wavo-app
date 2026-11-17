@@ -11,14 +11,15 @@
 #[path = "../../../src/cleanup.rs"]
 mod cleanup;
 #[allow(dead_code)]
-#[path = "../../../src/numbers.rs"]
-mod numbers;
-#[allow(dead_code)]
 #[path = "../../../src/gradient.rs"]
 mod gradient;
+#[allow(dead_code)]
+#[path = "../../../src/numbers.rs"]
+mod numbers;
 
 mod cores;
 pub mod engine;
+pub mod filter;
 #[cfg(test)]
 mod gradient_test;
 mod jni;
