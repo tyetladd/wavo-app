@@ -9,6 +9,8 @@
 /// The cores to run on, of each core's top frequency (`None` for a core without one): all but
 /// those of the slowest cluster. `None` when the cores don't differ or their speed isn't known,
 /// which leaves the thread as it is.
+// The host's `pin` is a stub, so on the host only the tests call this.
+#[cfg_attr(not(any(target_os = "android", target_os = "linux")), allow(dead_code))]
 pub fn fast(freqs: &[Option<u64>]) -> Option<Vec<usize>> {
   let slowest = freqs.iter().flatten().min()?;
   if freqs.iter().any(Option::is_none) {

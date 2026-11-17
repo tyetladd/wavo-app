@@ -71,7 +71,12 @@ pub fn pull(root: &Path, name: &str, progress: impl FnMut(u64, u64) -> bool) -> 
 
 /// Downloads the file at `url` into `root` as `name`, as [pull] does a model: the speaker models,
 /// which aren't wavo's. `name` is a plain file name.
-pub fn fetch(root: &Path, url: &str, name: &str, mut progress: impl FnMut(u64, u64) -> bool) -> Result<PathBuf> {
+pub fn fetch(
+  root: &Path,
+  url: &str,
+  name: &str,
+  mut progress: impl FnMut(u64, u64) -> bool,
+) -> Result<PathBuf> {
   if name.is_empty() || name.contains(['/', '\\']) || name.starts_with('.') {
     return Err(format!("{name:?} isn't a file name"));
   }
@@ -113,10 +118,14 @@ fn download(
   progress: &mut impl FnMut(u64, u64) -> bool,
 ) -> std::result::Result<(), Failed> {
   let mut out = OpenOptions::new().create(true).truncate(false).write(true).open(part);
-  let out = out.as_mut().map_err(|e| Failed::fatal(&e))?;
+  let out = out.as_mut().map_err(Failed::fatal)?;
   let have = out.metadata().map_err(Failed::fatal)?.len();
 
-  let resp = agent.get(url).header("Accept-Encoding", "identity").header("Range", format!("bytes={have}-")).call();
+  let resp = agent
+    .get(url)
+    .header("Accept-Encoding", "identity")
+    .header("Range", format!("bytes={have}-"))
+    .call();
   let resp = match resp {
     Ok(resp) => resp,
     // Past the end: the part is the whole file, cut off before its rename.
@@ -125,7 +134,8 @@ fn download(
     Err(e) => return Err(Failed::network(e)),
   };
 
-  let length = resp.headers().get("content-length").and_then(|v| v.to_str().ok()?.parse::<u64>().ok());
+  let length =
+    resp.headers().get("content-length").and_then(|v| v.to_str().ok()?.parse::<u64>().ok());
   let length = length.ok_or_else(|| Failed::fatal(format!("{url}: no file size")))?;
   // A server that ignores Range answers 200 with the whole file.
   let mut done = if resp.status() == 206 { have } else { 0 };
@@ -141,7 +151,9 @@ fn download(
     }
 
     match body.read(&mut buf) {
-      Ok(0) if done < total => return Err(Failed::network(format!("it ended at {done} of {total} bytes"))),
+      Ok(0) if done < total => {
+        return Err(Failed::network(format!("it ended at {done} of {total} bytes")));
+      }
       Ok(0) => return out.flush().map_err(Failed::fatal),
       Ok(n) => {
         // A full disk, mostly: no retry helps.
@@ -184,7 +196,10 @@ mod tests {
     fs::write(root.join("gigaam-v3-e2e-rnnt-Q8_0.gguf.part"), [0; 4]).unwrap();
     assert_eq!(find(&root, m), Some(root.join("gigaam-v3-e2e-rnnt-Q8_0.gguf")));
     // A model there is returned without the network.
-    assert_eq!(pull(&root, "gigaam-v3", |_, _| true), Ok(root.join("gigaam-v3-e2e-rnnt-Q8_0.gguf")));
+    assert_eq!(
+      pull(&root, "gigaam-v3", |_, _| true),
+      Ok(root.join("gigaam-v3-e2e-rnnt-Q8_0.gguf"))
+    );
 
     assert_eq!(remove(&root, "gigaam-v3"), Ok(14));
     assert_eq!(find(&root, m), None);
