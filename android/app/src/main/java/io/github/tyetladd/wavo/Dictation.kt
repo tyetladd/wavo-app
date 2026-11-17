@@ -102,7 +102,7 @@ class Dictation(
         startedWall = System.currentTimeMillis()
         audio = null
         conversation = conversations && settings.conversation
-        pieces = if (settings.live) Pieces() else null
+        pieces = if (settings.live) Pieces(Pieces.frames(settings.pauseMs)) else null
         fed = 0
         texts.clear()
         pending = 0

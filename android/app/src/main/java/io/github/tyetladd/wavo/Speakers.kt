@@ -19,8 +19,11 @@ data class Word(val ms: Long, val text: String)
 /** A stretch of the recording one speaker talks in, in seconds. */
 data class Segment(val start: Float, val end: Float, val speaker: Int)
 
-/** What one speaker said before the next one spoke. Speakers count from 1, in the order they first speak. */
-data class Turn(val speaker: Int, val text: String)
+/**
+ * What one speaker said before the next one spoke. Speakers count from 1, in the order they first
+ * speak; `ms` is when the turn starts, from the recording's start, for its timestamp.
+ */
+data class Turn(val speaker: Int, val text: String, val ms: Long = 0)
 
 /**
  * Who spoke when, for a conversation: sherpa-onnx with pyannote's segmentation model and a
@@ -140,28 +143,36 @@ fun turns(words: List<Word>, segments: List<Segment>): List<Turn> {
         return nearest?.speaker ?: 0
     }
 
-    // Runs of words of one speaker.
-    val runs = ArrayList<Pair<Int, MutableList<String>>>()
+    // Runs of words of one speaker, each with when it started.
+    val runs = ArrayList<Triple<Int, MutableList<String>, Long>>()
     for (word in words) {
         val who = speaker(word)
-        if (runs.lastOrNull()?.first == who) runs.last().second += word.text else runs += who to mutableListOf(word.text)
+        val last = runs.lastOrNull()
+        if (last?.first == who) last.second += word.text else runs += Triple(who, mutableListOf(word.text), word.ms)
     }
 
-    val merged = ArrayList<Pair<Int, MutableList<String>>>()
+    val merged = ArrayList<Triple<Int, MutableList<String>, Long>>()
     for ((i, run) in runs.withIndex()) {
         val before = merged.lastOrNull()
         // One word of another speaker inside a turn that goes on after it.
         val lone = run.second.size == 1 && before != null && i < runs.lastIndex && before.first == runs[i + 1].first
         if (before != null && (before.first == run.first || lone)) before.second += run.second
-        else merged += run.first to run.second.toMutableList()
+        else merged += Triple(run.first, run.second.toMutableList(), run.third)
     }
 
     val numbers = HashMap<Int, Int>()
-    return merged.map { (who, said) -> Turn(numbers.getOrPut(who) { numbers.size + 1 }, said.joinToString(" ")) }
+    return merged.map { (who, said, ms) ->
+        Turn(numbers.getOrPut(who) { numbers.size + 1 }, said.joinToString(" "), ms)
+    }
 }
 
 /** The turns as text: `Speaker 1: …`, a turn a paragraph. One speaker's words alone carry no label. */
-fun script(turns: List<Turn>): String = when {
-    turns.map { it.speaker }.distinct().size <= 1 -> turns.joinToString(" ") { it.text }
-    else -> turns.joinToString("\n\n") { "Speaker ${it.speaker}: ${it.text}" }
+fun script(turns: List<Turn>): String {
+    val many = turns.map { it.speaker }.distinct().size > 1
+    // A turn a line, each with the time it started, so a conversation can be followed and referred
+    // to. One speaker needs no label, but still a line and a time each.
+    return turns.joinToString("\n") {
+        val who = if (many) "Speaker ${it.speaker}: " else ""
+        "${clock(it.ms)} $who${it.text}"
+    }
 }

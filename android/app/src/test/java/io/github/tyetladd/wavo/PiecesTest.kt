@@ -17,8 +17,8 @@ class PiecesTest {
         FloatArray((seconds * rate).toInt()) { i -> level * sin(2 * PI * 220 * i / rate).toFloat() }
 
     /** Feeds the audio a tenth of a second at a time, as the recorder does, and collects the pieces. */
-    private fun run(audio: FloatArray): Pair<List<FloatArray>, FloatArray> {
-        val pieces = Pieces()
+    private fun run(audio: FloatArray, pauseFrames: Int = Pieces.PAUSE): Pair<List<FloatArray>, FloatArray> {
+        val pieces = Pieces(pauseFrames)
         val out = ArrayList<FloatArray>()
         for (start in audio.indices step rate / 10) {
             pieces.feed(audio.copyOfRange(start, minOf(start + rate / 10, audio.size)))
@@ -32,6 +32,28 @@ class PiecesTest {
         val rest = pieces.rest()
         assertEquals(audio.size - rest.size, pieces.start)
         return out to rest
+    }
+
+    @Test
+    fun the_pause_setting_is_milliseconds_as_frames() {
+        // A frame is 20 ms.
+        assertEquals(50, Pieces.frames(1000))
+        assertEquals(25, Pieces.frames(500))
+        assertEquals(15, Pieces.frames(300))
+        // Never zero: a pause of nothing would cut at every quiet frame.
+        assertEquals(1, Pieces.frames(0))
+    }
+
+    @Test
+    fun a_shorter_pause_shows_the_text_sooner() {
+        // Speech, then a quiet 0.6 s, then speech again: too short for the default second.
+        val audio = tone(3.0, 0.3f) + tone(0.6, 0.001f) + tone(2.05, 0.3f)
+        val (slow, _) = run(audio, Pieces.frames(1000))
+        val (quick, _) = run(audio, Pieces.frames(300))
+
+        assertEquals("a 0.6 s gap is not a pause of a second", 0, slow.size)
+        assertEquals("but it is a pause of 300 ms", 1, quick.size)
+        assertTrue("the quicker piece ends sooner", quick[0].size < (3.6 * rate).toInt())
     }
 
     @Test

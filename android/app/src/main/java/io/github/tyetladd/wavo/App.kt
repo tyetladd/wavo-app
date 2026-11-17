@@ -51,6 +51,14 @@ class Settings(context: Context) {
         get() = prefs.getBoolean("live", true)
         set(value) = prefs.edit().putBoolean("live", value).apply()
 
+    /**
+     * The quiet that ends a piece, in milliseconds. Shorter shows the text sooner; longer keeps a
+     * breath or a search for a word from ending a sentence, which puts full stops inside one.
+     */
+    var pauseMs: Int
+        get() = prefs.getInt("pause_ms", 1000)
+        set(value) = prefs.edit().putInt("pause_ms", value).apply()
+
     /** The app's screen records a conversation and labels its speakers. */
     var conversation: Boolean
         get() = prefs.getBoolean("conversation", false)

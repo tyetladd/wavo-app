@@ -20,13 +20,26 @@ data class Entry(
     val tookMs: Long,
     /** The recording's name in the recordings folder, or `null` when none was kept. */
     val audio: String? = null,
+    /** What the person named this dictation, or `null` while it has no name. */
+    val label: String? = null,
 )
+
+/**
+ * A dictation as shared text: its name when it has one, when it was said, and what was said. No
+ * model, no timings, no audio — enough to read in a note, and nothing to clutter it.
+ */
+fun export(entry: Entry): String {
+    val when_ = java.text.SimpleDateFormat("d MMM yyyy, HH:mm", java.util.Locale.getDefault())
+        .format(java.util.Date(entry.at))
+    return listOfNotNull(entry.label?.trim()?.takeIf { it.isNotEmpty() }, when_, entry.text)
+        .joinToString("\n\n")
+}
 
 /**
  * Every dictation with text, the newest first, and the recording each points at. The newest 500
  * are shown; nothing is pruned, so a row and its recording stay until the person deletes them.
  */
-class History(context: Context) : SQLiteOpenHelper(context, "history.db", null, 2) {
+class History(context: Context) : SQLiteOpenHelper(context, "history.db", null, 3) {
     val entries = MutableStateFlow<List<Entry>>(emptyList())
 
     /** The recordings the rows point at: History deletes them with their rows. */
@@ -40,13 +53,22 @@ class History(context: Context) : SQLiteOpenHelper(context, "history.db", null, 
         db.execSQL(
             "CREATE TABLE history (id INTEGER PRIMARY KEY AUTOINCREMENT, at INTEGER NOT NULL, " +
                 "text TEXT NOT NULL, model TEXT NOT NULL, audio_ms INTEGER NOT NULL, took_ms INTEGER NOT NULL, " +
-                "audio TEXT)",
+                "audio TEXT, label TEXT)",
         )
     }
 
     override fun onUpgrade(db: SQLiteDatabase, from: Int, to: Int) {
-        // Version 1 kept the text only. Its rows stay, with no recording.
+        // Version 1 kept the text only; version 2 added the recording. Its rows stay as they are.
         if (from < 2) db.execSQL("ALTER TABLE history ADD COLUMN audio TEXT")
+        if (from < 3) db.execSQL("ALTER TABLE history ADD COLUMN label TEXT")
+    }
+
+    /** Names a dictation, or clears its name with `null` or a blank. */
+    fun label(id: Long, label: String?) {
+        val value = label?.trim()?.takeIf { it.isNotEmpty() }
+        val row = ContentValues().apply { put("label", value) }
+        writableDatabase.update("history", row, "id = ?", arrayOf(id.toString()))
+        reload()
     }
 
     fun add(heard: Heard, audio: String? = null) {
@@ -116,12 +138,12 @@ class History(context: Context) : SQLiteOpenHelper(context, "history.db", null, 
 
     private fun read(limit: String?): List<Entry> {
         val out = ArrayList<Entry>()
-        val columns = arrayOf("id", "at", "text", "model", "audio_ms", "took_ms", "audio")
+        val columns = arrayOf("id", "at", "text", "model", "audio_ms", "took_ms", "audio", "label")
         readableDatabase.query("history", columns, null, null, null, null, "id DESC", limit).use { c ->
             while (c.moveToNext()) {
                 out += Entry(
                     c.getLong(0), c.getLong(1), c.getString(2), c.getString(3),
-                    c.getLong(4), c.getLong(5), c.getString(6),
+                    c.getLong(4), c.getLong(5), c.getString(6), c.getString(7),
                 )
             }
         }

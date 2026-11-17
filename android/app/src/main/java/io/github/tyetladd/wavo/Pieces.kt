@@ -14,7 +14,7 @@ import kotlin.math.sqrt
  * Quiet is a frame whose level is under a tenth or so of the loudest frame so far, and never
  * under [FLOOR]: a quiet room on a phone's microphone is about 0.001–0.005, speech 0.03 and up.
  */
-class Pieces {
+class Pieces(private val pauseFrames: Int = PAUSE) {
     private var pcm = FloatArray(Recorder.RATE * 30)
     private var size = 0
 
@@ -57,7 +57,7 @@ class Pieces {
                 run = 0
                 speech++
             }
-            if (run >= PAUSE && speech >= SPEECH && (i + 1 - first) * FRAME >= MIN) {
+            if (run >= pauseFrames && speech >= SPEECH && (i + 1 - first) * FRAME >= MIN) {
                 return cut((i - run + 1 + run / 2) * FRAME)
             }
         }
@@ -102,10 +102,14 @@ class Pieces {
         const val FLOOR = 0.006f
 
         /**
-         * Frames of quiet that make a pause: a second. A piece ends a sentence for the model, so
-         * a shorter pause, a breath or a search for a word, put full stops in the middle of one.
+         * Frames of quiet that make a pause, by default: a second. A piece ends a sentence for the
+         * model, so a shorter pause, a breath or a search for a word, put full stops in the middle
+         * of one. The setting trades that against how soon the text shows.
          */
         const val PAUSE = 50
+
+        /** The pause a person chooses, in milliseconds, as frames of [FRAME]. */
+        fun frames(ms: Int): Int = maxOf(1, ms / (FRAME * 1000 / Recorder.RATE))
 
         /** Frames of speech a piece has at least: 0.2 s. */
         const val SPEECH = 10

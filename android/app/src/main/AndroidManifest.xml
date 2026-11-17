@@ -19,8 +19,11 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.Wavo">
 
+        <!-- Rotation and the rest are handled without recreating the Activity: a recreation
+             released the History screen's player, so turning the phone stopped the audio. -->
         <activity
             android:name=".MainActivity"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|uiMode|density|fontScale"
             android:exported="true"
             android:windowSoftInputMode="adjustResize">
             <intent-filter>
